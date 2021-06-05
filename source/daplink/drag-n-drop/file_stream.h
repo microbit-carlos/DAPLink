@@ -37,6 +37,7 @@ typedef enum {
     STREAM_TYPE_BIN = STREAM_TYPE_START,
     STREAM_TYPE_HEX,
     STREAM_TYPE_UHEX_BLOCKS,
+    STREAM_TYPE_UF2,
 
     // Add new stream types here
 
