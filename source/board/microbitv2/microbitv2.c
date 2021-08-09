@@ -29,6 +29,7 @@ const char * const board_id_mb_2_0x = "9905";
 
 extern target_cfg_t target_device_nrf52_64;
 
+
 // Called in main_task() to init before USB and files are configured
 static void prerun_board_config(void) {
     target_device = target_device_nrf52_64;
