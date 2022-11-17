@@ -26,7 +26,11 @@
 
 
 #define DAPLINK_RAM_START               0x20000000
+#if MICROBIT_NRF52_FULL_RAM
+#define DAPLINK_RAM_SIZE                0x00020000 // 128 KiB
+#else
 #define DAPLINK_RAM_SIZE                0x00008000 // 32 KiB
+#endif
 
 /* ROM sizes */
 
@@ -42,9 +46,11 @@
 /* RAM sizes */
 
 #define DAPLINK_RAM_APP_START           0x20000000
-#define DAPLINK_RAM_APP_SIZE            0x00007F00
+//#define DAPLINK_RAM_APP_SIZE            0x00007F00
+#define DAPLINK_RAM_APP_SIZE            (DAPLINK_RAM_SIZE - 0x100)
 
-#define DAPLINK_RAM_SHARED_START        0x20007F00
+//#define DAPLINK_RAM_SHARED_START        0x20007F00
+#define DAPLINK_RAM_SHARED_START        (DAPLINK_RAM_APP_START + DAPLINK_RAM_APP_SIZE)
 #define DAPLINK_RAM_SHARED_SIZE         0x00000100
 
 /* Flash Programming Info */

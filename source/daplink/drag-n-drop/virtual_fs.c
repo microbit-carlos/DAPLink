@@ -233,7 +233,8 @@ static const mbr_t mbr_tmpl = {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     },
     // Signature MUST be 0xAA55 to maintain compatibility (i.e. with Android).
-    /*uint16_t*/.signature = 0xAA55,
+    // TODO: temporarily set to 0x00 to avoid an issue in Linux VMs
+    /*uint16_t*/.signature = 0x0000,
 };
 
 enum virtual_media_idx_t {
@@ -393,6 +394,244 @@ uint32_t vfs_get_total_size()
         util_assert(0);
     }
     return size;
+}
+
+// Custom folder with 32 entries
+root_dir_t dir_custom_folder;
+uint32_t custom_dir_idx = 0;
+
+static uint32_t vfs_folder_callback(uint32_t sector_offset, uint8_t *data, uint32_t num_sectors) {
+    uint32_t read_start = VFS_SECTOR_SIZE * sector_offset;
+    uint32_t available_to_read = ARRAY_SIZE(dir_custom_folder.f) - read_start;
+    uint32_t copy_size = MIN((VFS_SECTOR_SIZE * num_sectors), available_to_read);
+
+    if (read_start >= ARRAY_SIZE(dir_custom_folder.f)) {
+        return VFS_SECTOR_SIZE;
+    }
+    memcpy(data, (uint8_t *)&dir_custom_folder, copy_size);
+
+    return VFS_SECTOR_SIZE;
+}
+
+// Helper function for vfs_create_macos_metadata_files()
+static uint8_t long_filename_checksum(char *name) {
+    uint8_t sum = 0;
+    for (int i = 0; i < 11; i++) {
+        sum = (((sum & 1) << 7) | ((sum & 0xfe) >> 1)) + name[i];
+    }
+    return sum;
+}
+
+// HACK: Manually add fat entries to create special metadata files specific to
+//       macOS, to avoid the creation of additional metadata files by the OS
+void vfs_create_macos_metadata_files() {
+    FatDirectoryEntry_t *de;
+
+    // We'll create the following files:
+    // folder -> .fseventsd/            (long filename)
+    // file -> .fseventsd/no_data
+    // file -> .Trashes                 (long filename)
+    // file -> .metadata_never_index    (long filename)
+
+    // first check if we've got enough resources
+    if ((fat_idx + 4) >= ARRAY_SIZE(fat.f)) {
+        util_assert(0);
+        return;
+    }
+    if ((virtual_media_idx + 4) > ARRAY_SIZE(virtual_media)) {
+        util_assert(0);
+        return;
+    }
+    if ((dir_idx + 7) >= ARRAY_SIZE(dir_current.f)) {
+        util_assert(0);
+        return;
+    }
+
+    // Initialise directory table and reserve a cluster
+    memset(&dir_custom_folder, 0, sizeof(dir_custom_folder));
+    custom_dir_idx = 0;
+
+    uint32_t dir_table_cluster_idx = fat_idx;
+    write_fat(&fat, dir_table_cluster_idx, 0xFFFF);
+    fat_idx++;
+
+    // The first directory entry for the folder is a Long Filename entry
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    uint8_t long_folder_name_entry[32] = { 0 };
+    memset(&long_folder_name_entry, 0, sizeof(long_folder_name_entry));
+    long_folder_name_entry[0] = 0x41; // sequence: | 01 (First) | (1 << 6) (last)
+    long_folder_name_entry[1] = '.';
+    long_folder_name_entry[3] = 'f';
+    long_folder_name_entry[5] = 's';
+    long_folder_name_entry[7] = 'e';
+    long_folder_name_entry[9] = 'v';
+    long_folder_name_entry[11] = 0x0F; // attributes, configures this entry as a Long Filename
+    long_folder_name_entry[12] = 0x00; // reserved, always zero in Long Filename
+    long_folder_name_entry[13] = long_filename_checksum("FSEVEN~1   ");
+    long_folder_name_entry[14] = 'e';
+    long_folder_name_entry[16] = 'n';
+    long_folder_name_entry[18] = 't';
+    long_folder_name_entry[20] = 's';
+    long_folder_name_entry[22] = 'd';
+    long_folder_name_entry[24] = '\0'; // Character 11
+    long_folder_name_entry[26] = 0x00; // Cluster number, always 0 in Long Filename
+    long_folder_name_entry[27] = 0x00; // Cluster number, always 0 in Long Filename
+    long_folder_name_entry[28] = 0xFF;  // Character 12
+    long_folder_name_entry[29] = 0xFF;
+    long_folder_name_entry[30] = 0xFF;  // Character 13
+    long_folder_name_entry[31] = 0xFF;
+    memcpy(de, &long_folder_name_entry, ARRAY_SIZE(long_folder_name_entry));
+
+    // Then add the normal root directory entry for the folder
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    memcpy(de, &dir_entry_tmpl, sizeof(dir_entry_tmpl));
+    memcpy(de->filename, "FSEVEN~1   ", 11);
+    de->attributes = VFS_FILE_ATTR_READ_ONLY | VFS_FILE_ATTR_SUB_DIR,
+    de->first_cluster_high_16 = (dir_table_cluster_idx >> 16) & 0xFFFF;
+    de->first_cluster_low_16 = (dir_table_cluster_idx >> 0) & 0xFFFF;
+
+    // Update virtual media for the new directory table
+    virtual_media[virtual_media_idx].read_cb = vfs_folder_callback;
+    virtual_media[virtual_media_idx].write_cb = write_none;
+    virtual_media[virtual_media_idx].length = 1 * mbr.bytes_per_sector * mbr.sectors_per_cluster;
+    virtual_media_idx++;
+    file_count += 1;
+
+    // Reserve 3 clusters for 3 empty files:
+    //     .fseventsd/no_log
+    //     .metadata_never_index
+    //     .Trashes
+    uint32_t no_log_cluster_idx = fat_idx++;
+    uint32_t never_index_cluster_idx = fat_idx++;
+    uint32_t trahses_cluster_idx = fat_idx++;
+    write_fat(&fat, no_log_cluster_idx, 0xFFFF);
+    write_fat(&fat, never_index_cluster_idx, 0xFFFF);
+    write_fat(&fat, trahses_cluster_idx, 0xFFFF);
+
+    // Add .fseventsd directory entry for .fseventsd/no_log
+    if (custom_dir_idx >= ARRAY_SIZE(dir_custom_folder.f)) {
+        util_assert(0);
+        return;
+    }
+    de = &dir_custom_folder.f[custom_dir_idx];
+    custom_dir_idx++;
+    memcpy(de, &dir_entry_tmpl, sizeof(dir_entry_tmpl));
+    memcpy(de->filename, "NO_LOG     ", 11);
+    de->reserved = 0x8; // Set up the basename as lowercase
+    de->first_cluster_high_16 = (no_log_cluster_idx >> 16) & 0xFFFF;
+    de->first_cluster_low_16 = (no_log_cluster_idx >> 0) & 0xFFFF;
+
+    // Add two root directory entries for .metadata_never_index with a long name
+    // metadata_nev er_index
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    uint8_t never_index_long_name_entry[32] = { 0 };
+    memset(&never_index_long_name_entry, 0, sizeof(never_index_long_name_entry));
+    never_index_long_name_entry[0] = 0x42; // sequence: | 02 (Second) | (1 << 6) (last)
+    never_index_long_name_entry[1] = 'e';
+    never_index_long_name_entry[3] = 'r';
+    never_index_long_name_entry[5] = '_';
+    never_index_long_name_entry[7] = 'i';
+    never_index_long_name_entry[9] = 'n';
+    never_index_long_name_entry[11] = 0x0F; // attributes, configures this entry as a Long Filename
+    never_index_long_name_entry[12] = 0x00; // reserved, always zero in Long Filename
+    never_index_long_name_entry[13] = long_filename_checksum("METADA~1   ");
+    never_index_long_name_entry[14] = 'd';
+    never_index_long_name_entry[16] = 'e';
+    never_index_long_name_entry[18] = 'x';
+    never_index_long_name_entry[20] = 0x00;
+    never_index_long_name_entry[22] = 0xFF;
+    never_index_long_name_entry[23] = 0xFF;
+    never_index_long_name_entry[24] = 0xFF;
+    never_index_long_name_entry[25] = 0xFF;
+    never_index_long_name_entry[26] = 0x00; // Cluster number, always 0 in Long Filename
+    never_index_long_name_entry[27] = 0x00; // Cluster number, always 0 in Long Filename
+    never_index_long_name_entry[28] = 0xFF;
+    never_index_long_name_entry[29] = 0xFF;
+    never_index_long_name_entry[30] = 0xFF;
+    never_index_long_name_entry[31] = 0xFF;
+    memcpy(de, &never_index_long_name_entry, ARRAY_SIZE(never_index_long_name_entry));
+
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    memset(&never_index_long_name_entry, 0, sizeof(never_index_long_name_entry));
+    never_index_long_name_entry[0] = 0x01; // sequence: | 01 (First) | (1 << 6) (last)
+    never_index_long_name_entry[1] = '.';
+    never_index_long_name_entry[3] = 'm';
+    never_index_long_name_entry[5] = 'e';
+    never_index_long_name_entry[7] = 't';
+    never_index_long_name_entry[9] = 'a';
+    never_index_long_name_entry[11] = 0x0F; // attributes, configures this entry as a Long Filename
+    never_index_long_name_entry[12] = 0x00; // reserved, always zero in Long Filename
+    never_index_long_name_entry[13] = long_filename_checksum("METADA~1   ");
+    never_index_long_name_entry[14] = 'd';
+    never_index_long_name_entry[16] = 'a';
+    never_index_long_name_entry[18] = 't';
+    never_index_long_name_entry[20] = 'a';
+    never_index_long_name_entry[22] = '_';
+    never_index_long_name_entry[24] = 'n';
+    never_index_long_name_entry[26] = 0x00; // Cluster number, always 0 in Long Filename
+    never_index_long_name_entry[27] = 0x00; // Cluster number, always 0 in Long Filename
+    never_index_long_name_entry[28] = 'e';
+    never_index_long_name_entry[30] = 'v';
+    memcpy(de, &never_index_long_name_entry, ARRAY_SIZE(never_index_long_name_entry));
+
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    memcpy(de, &dir_entry_tmpl, sizeof(dir_entry_tmpl));
+    memcpy(de->filename, "METADA~1   ", 11);
+    de->filesize = 0;
+    de->first_cluster_high_16 = (never_index_cluster_idx >> 16) & 0xFFFF;
+    de->first_cluster_low_16 = (never_index_cluster_idx >> 0) & 0xFFFF;
+
+    // Add root directory entry for .Trashes with a long name
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    uint8_t trashes_long_name_entry[32] = { 0 };
+    memset(&trashes_long_name_entry, 0, sizeof(trashes_long_name_entry));
+    trashes_long_name_entry[0] = 0x41; // sequence: | 01 (First) | (1 << 6) (last)
+    trashes_long_name_entry[1] = '.';
+    trashes_long_name_entry[3] = 'T';
+    trashes_long_name_entry[5] = 'r';
+    trashes_long_name_entry[7] = 'a';
+    trashes_long_name_entry[9] = 's';
+    trashes_long_name_entry[11] = 0x0F; // attributes, configures this entry as a Long Filename
+    trashes_long_name_entry[12] = 0x00; // reserved, always zero in Long Filename
+    trashes_long_name_entry[13] = long_filename_checksum("TRASHE~1   ");
+    trashes_long_name_entry[14] = 'h';
+    trashes_long_name_entry[16] = 'e';
+    trashes_long_name_entry[18] = 's';
+    trashes_long_name_entry[20] = 0x00;
+    trashes_long_name_entry[22] = 0xFF;
+    trashes_long_name_entry[23] = 0xFF;
+    trashes_long_name_entry[24] = 0xFF;
+    trashes_long_name_entry[25] = 0xFF;
+    trashes_long_name_entry[26] = 0x00; // Cluster number, always 0 in Long Filename
+    trashes_long_name_entry[27] = 0x00; // Cluster number, always 0 in Long Filename
+    trashes_long_name_entry[28] = 0xFF;
+    trashes_long_name_entry[29] = 0xFF;
+    trashes_long_name_entry[30] = 0xFF;
+    trashes_long_name_entry[31] = 0xFF;
+    memcpy(de, &trashes_long_name_entry, ARRAY_SIZE(trashes_long_name_entry));
+
+    de = &dir_current.f[dir_idx];
+    dir_idx++;
+    memcpy(de, &dir_entry_tmpl, sizeof(dir_entry_tmpl));
+    memcpy(de->filename, "TRASHE~1   ", 11);
+    de->filesize = 0;
+    de->first_cluster_high_16 = (trahses_cluster_idx >> 16) & 0xFFFF;
+    de->first_cluster_low_16 = (trahses_cluster_idx >> 0) & 0xFFFF;
+
+    // Update virtual media for the three empty files
+    for (int i = 0; i < 3; i++) {
+        virtual_media[virtual_media_idx + i].read_cb = read_zero;
+        virtual_media[virtual_media_idx + i].write_cb = write_none;
+        virtual_media[virtual_media_idx + i].length = 1 * mbr.bytes_per_sector * mbr.sectors_per_cluster;
+    }
+    virtual_media_idx += 3;
+    file_count += 3;
 }
 
 vfs_file_t vfs_create_file(const vfs_filename_t filename, vfs_read_cb_t read_cb, vfs_write_cb_t write_cb, uint32_t len)

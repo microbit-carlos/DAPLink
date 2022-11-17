@@ -8,6 +8,9 @@ common:
         - DAP_DEFAULT_SWJ_CLOCK=6000000     # Results in one slow delay of 3 cycles 
         - BOARD_USB_BMAXPOWER=0x96
         - CDC_ACM_DEFAULT_BAUDRATE=115200
+        - DAPLINK_DEBUG=1
+        - DAPLINK_DEBUG_RTT=0
+        - FORCE_UHEX_OOO_PROCESSING=0
     includes:
         - source/board/microbitv2/
         - source/board/microbitv2/kl27z/

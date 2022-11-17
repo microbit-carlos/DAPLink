@@ -32,7 +32,11 @@
 #include "cmsis_compiler.h"
 
 // Set to 1 to enable debugging
-#define DEBUG_FLASH_DECODER     0
+#if DBG_EXTENDED_LOGGING
+#define DEBUG_FLASH_DECODER     1
+#else
+#define DEBUG_FLASH_DECODER     1
+#endif
 
 #if DEBUG_FLASH_DECODER
 #include "daplink_debug.h"
@@ -233,7 +237,8 @@ error_t flash_decoder_open(void)
 error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
 {
     error_t status;
-    flash_decoder_printf("flash_decoder_write(addr=0x%x, size=0x%x)\r\n", addr, size);
+    //flash_decoder_printf("flash_decoder_write(addr=0x%x, size=0x%x)\r\n", addr, size);
+    flash_decoder_printf("flash_wr(addr=0x%x, size=%d)\n", addr, size);
 
     if (DECODER_STATE_OPEN != state) {
         util_assert(0);
@@ -244,7 +249,8 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
     if (!initial_addr_set) {
         initial_addr = addr;
         current_addr = initial_addr;
-        flash_decoder_printf("     initial_addr=0x%x\r\n", initial_addr);
+        //flash_decoder_printf("\tinitial_addr=0x%x\r\n", initial_addr);
+        flash_decoder_printf("\tinit_addr=0x%x\n", initial_addr);
         initial_addr_set = true;
     }
 
@@ -262,7 +268,7 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
             copy_size = MIN(size, sizeof(flash_buf) - flash_buf_pos);
             memcpy(&flash_buf[flash_buf_pos], data, copy_size);
             flash_buf_pos += copy_size;
-            flash_decoder_printf("    buffering %i bytes\r\n", copy_size);
+            flash_decoder_printf("\tbuffering %i bytes\n", copy_size);
             // Update vars so they no longer include the buffered data
             data += copy_size;
             size -= copy_size;
@@ -273,12 +279,12 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
                 util_assert(sizeof(flash_buf) == flash_buf_pos);
                 // Determine flash type and get info for it
                 flash_type = flash_decoder_detect_type(flash_buf, flash_buf_pos, initial_addr, true);
-                flash_decoder_printf("    Buffering complete, setting flash_type=%i\r\n", flash_type);
+                flash_decoder_printf("\tBuffering complete, setting flash_type=%i\r\n", flash_type);
                 flash_type_known = true;
             }
         } else {
             flash_type = FLASH_DECODER_TYPE_TARGET;
-            flash_decoder_printf("    Non sequential addr, setting flash_type=%i\r\n", flash_type);
+            flash_decoder_printf("\tNon sequential addr, setting flash_type=%i\r\n", flash_type);
             flash_type_known = true;
         }
 
@@ -303,11 +309,11 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
                 }
             }
 
-            flash_decoder_printf("    flash_start_addr=0x%x\r\n", flash_start_addr);
+            flash_decoder_printf("\tflash_start_addr=0x%x\r\n", flash_start_addr);
             // Initialize flash manager
             util_assert(!flash_initialized);
             status = flash_manager_init(flash_intf);
-            flash_decoder_printf("    flash_manager_init ret %i\r\n", status);
+            flash_decoder_printf("\tflash_manager_init ret %i\r\n", status);
 
             if (ERROR_SUCCESS != status) {
                 state = DECODER_STATE_ERROR;
@@ -320,7 +326,7 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
         // If flash has been initalized then write out buffered data
         if (flash_initialized) {
             status = flash_manager_data(initial_addr, flash_buf, flash_buf_pos);
-            flash_decoder_printf("    Flushing buffer initial_addr=0x%x, flash_buf_pos=%i, flash_manager_data ret=%i\r\n",
+            flash_decoder_printf("\tFlushing buffer initial_addr=0x%x, flash_buf_pos=%i, flash_manager_data ret=%i\r\n",
                                  initial_addr, flash_buf_pos, status);
 
             if (ERROR_SUCCESS != status) {
@@ -333,8 +339,9 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
     // Write data as normal if flash has been initialized
     if (flash_initialized) {
         status = flash_manager_data(addr, data, size);
-        flash_decoder_printf("    Writing data, addr=0x%x, size=0x%x, flash_manager_data ret %i\r\n",
-                             addr, size, status);
+        //flash_decoder_printf("\tWriting data, addr=0x%x, size=0x%x, flash_manager_data ret %i\r\n",
+        //                     addr, size, status);
+        flash_decoder_printf("\tflash_data ret %i\n", status);
 
         if (ERROR_SUCCESS != status) {
             state = DECODER_STATE_ERROR;
@@ -344,8 +351,9 @@ error_t flash_decoder_write(uint32_t addr, const uint8_t *data, uint32_t size)
 
     // Check if this is the end of data
     if (flash_decoder_is_at_end(addr, data, size)) {
-        flash_decoder_printf("    End of transfer detected - addr 0x%08x, size 0x%08x\r\n",
-                             addr, size);
+        //flash_decoder_printf("\tEnd of transfer detected - addr 0x%08x, size 0x%08x\r\n",
+        //                     addr, size);
+        flash_decoder_printf("\ttransend detected, addr=%d, size=%d\n", addr, size);
         state = DECODER_STATE_DONE;
         return ERROR_SUCCESS_DONE;
     }
@@ -368,7 +376,7 @@ error_t flash_decoder_close(void)
 
     if (flash_initialized) {
         status = flash_manager_uninit();
-        flash_decoder_printf("    flash_manager_uninit ret %i\r\n", status);
+        flash_decoder_printf("\tflash_manager_uninit ret %i\r\n", status);
     }
 
     if ((DECODER_STATE_DONE != prev_state) &&

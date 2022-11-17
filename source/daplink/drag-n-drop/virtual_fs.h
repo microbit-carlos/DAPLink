@@ -78,6 +78,7 @@ uint32_t vfs_get_total_size(void);
 // This must be called before vfs_read or vfs_write are called.
 // Adding a new file after vfs_read or vfs_write have been called results in undefined behavior.
 vfs_file_t vfs_create_file(const vfs_filename_t filename, vfs_read_cb_t read_cb, vfs_write_cb_t write_cb, uint32_t len);
+void vfs_create_macos_metadata_files(void);
 
 // Set the attributes of a file
 void vfs_file_set_attr(vfs_file_t file, vfs_file_attr_bit_t attr);

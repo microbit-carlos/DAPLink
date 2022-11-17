@@ -422,6 +422,8 @@ bool vfs_user_magic_file_hook(const vfs_filename_t filename, bool *do_remount)
 }
 
 void vfs_user_build_filesystem_hook() {
+    // TODO: For testing avoid reflashing the target from any DAPLink error
+    return;
     error_t status;
     error_t error = vfs_mngr_get_transfer_status();
 
@@ -459,6 +461,9 @@ void vfs_user_build_filesystem_hook() {
     if (storage_cfg_get_file_visible()) {
         vfs_create_file(storage_cfg_get_filename(), read_file_data_txt, 0, file_size);
     }
+
+    // Create .fsevent/no_data and other no-metadata files
+    vfs_create_macos_metadata_files();
 }
 
 // File callback to be used with vfs_add_file to return file contents
@@ -500,6 +505,18 @@ static uint32_t read_file_data_txt(uint32_t sector_offset, uint8_t *data, uint32
 uint8_t board_detect_incompatible_image(const uint8_t *data, uint32_t size)
 {
     uint8_t result = 0;
+    
+    return 0;
+
+    // HACK: If this block is an universal hex, then no need to check the vectors
+    // This function is called on the first .hex/.bin file block received,
+    // when a file is sent out of order, sometimes the first block received
+    // might not be the first file block, and so the vector check will be done
+    // in a blob of data that has nothing to do with the vectors.
+    bool is_uhex_block = //(512 == size) &&
+            (memcmp(data, (const void *)":02000004", 9) == 0) &&
+            (memcmp(data + 16, (const void *)":0400000A", 9) == 0);
+    if (is_uhex_block) return false;
 
     // Check difference in vectors (mem fault, bus fault, usage fault)
     // If these vectors are 0, we assume it's an M0 image (not compatible)

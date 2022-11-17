@@ -7,6 +7,17 @@ common:
         # - DELAY_FAST_CYCLES=2U          # Fast delay needed to reach 8MHz SWD clock speed
         # - DAP_DEFAULT_SWJ_CLOCK=8000000
         - CDC_ACM_DEFAULT_BAUDRATE=115200
+        - DAPLINK_DEBUG=1
+        # When RTT is enable a lot more info is logged
+        - DAPLINK_DEBUG_RTT=0
+        - MICROBIT_NRF52_FULL_RAM=0
+        # To be set at the same time as RTT, logs a lot more data
+        - DBG_EXTENDED_LOGGING=0
+        # This forces out-of-order blocks that are Universal Hex to be processed
+        # as by default they are ignore
+        - FORCE_UHEX_OOO_PROCESSING=0
+        # Tries to detect macOS resource forks and cache them in RAM for the OS to read the later
+        - CACHE_MACOS_RESOURCE_FORK=1
     includes:
         - source/board/microbitv2/
         - source/board/microbitv2/nrf52820/

@@ -24,6 +24,17 @@
 #include "intelhex.h"
 #include "cmsis_compiler.h"
 
+// Set to 1 to enable debugging
+#define DEBUG_IHEX     1
+
+#if DEBUG_IHEX
+#include "daplink_debug.h"
+#define ihex_printf    debug_msg
+#define ihex_data      debug_data
+#else
+#define ihex_printf(...)
+#endif
+
 typedef enum hex_record_t hex_record_t;
 enum hex_record_t {
     DATA_RECORD = 0,
@@ -103,6 +114,7 @@ void reset_hex_parser(void)
 
 hexfile_parse_status_t parse_hex_blob(const uint8_t *hex_blob, const uint32_t hex_blob_size, uint32_t *hex_parse_cnt, uint8_t *bin_buf, const uint32_t bin_buf_size, uint32_t *bin_buf_address, uint32_t *bin_buf_cnt)
 {
+    uint8_t *line_pointer = (uint8_t *)hex_blob;
     uint8_t *end = (uint8_t *)hex_blob + hex_blob_size;
     hexfile_parse_status_t status = HEX_PARSE_UNINIT;
     // reset the amount of data that is being return'd
@@ -143,6 +155,7 @@ hexfile_parse_status_t parse_hex_blob(const uint8_t *hex_blob, const uint32_t he
 
             // found start of a new record. reset state variables
             case ':':
+                line_pointer = (uint8_t *)hex_blob;
                 memset(line.buf, 0, sizeof(hex_line_t));
                 low_nibble = 0;
                 idx = 0;
@@ -155,6 +168,13 @@ hexfile_parse_status_t parse_hex_blob(const uint8_t *hex_blob, const uint32_t he
                     line.buf[idx] |= ctoh((uint8_t)(*hex_blob)) & 0xf;
                     if (++idx >= (line.byte_count + 5)) { //all data in
                         if (0 == validate_checksum(&line)) {
+                            // for (int x = 0; x < 43; x++) ihex_printf("%02x ", line_pointer[x]);
+                            int char_count = hex_blob - line_pointer;
+                            if (char_count > 0 && char_count < 77) {
+                                ihex_printf("CKSUM ERR (%d, %d): %.*s", line_pointer, hex_blob, char_count, line_pointer);
+                            } else {
+                                ihex_printf("CKSUM ERR: Error count=%d", char_count);
+                            }
                             status = HEX_PARSE_CKSUM_FAIL;
                             goto hex_parser_exit;
                         } else {
