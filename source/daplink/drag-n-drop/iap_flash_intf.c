@@ -30,6 +30,19 @@
 #include "crc.h"
 #include "info.h"
 
+
+// Set to 1 to enable debugging
+#ifndef DEBUG_IAP_FLASH
+#define DEBUG_IAP_FLASH     0
+#endif
+
+#if DEBUG_IAP_FLASH
+#include "daplink_debug.h"
+#define iap_flash_printf    debug_msg
+#else
+#define iap_flash_printf(...)
+#endif
+
 #ifndef DAPLINK_DISABLE_STATIC_CHECKS
 // Application start must be aligned to page write
 COMPILER_ASSERT(DAPLINK_ROM_APP_START % DAPLINK_MIN_WRITE_SIZE == 0);
@@ -154,6 +167,7 @@ static error_t uninit(void)
 
 static error_t program_page(uint32_t addr, const uint8_t *buf, uint32_t size)
 {
+    iap_flash_printf("program_page(0x%08x, %d)\r\n", addr, size);
     uint32_t iap_status;
     error_t status;
     uint32_t min_prog_size;
@@ -390,7 +404,9 @@ static error_t intercept_page_write(uint32_t addr, const uint8_t *buf, uint32_t 
 
     /* Everything below here is interface specific */
     crc_size = MIN(size, updt_end - addr - 4);
+    iap_flash_printf("intercept_page_write(0x%08x, %d)\r\n", addr, size);
     crc = crc32_continue(crc, buf, crc_size);
+    iap_flash_printf("intercept_page_write() crc_size = %d, 0x%08x\r\n", crc_size, crc);
 
     // Intercept the data if it is in the first sector
     if ((addr >= updt_start) && (addr < updt_start + DAPLINK_SECTOR_SIZE)) {
@@ -410,6 +426,7 @@ static error_t intercept_page_write(uint32_t addr, const uint8_t *buf, uint32_t 
                                 (buf[size_left - 1] << 24);
 
         if (crc != crc_in_image) {
+            iap_flash_printf("CRC mismatch: crc = 0x%08x, crc_in_image = 0x%08x\r\n", crc, crc_in_image);
             return ERROR_BL_UPDT_BAD_CRC;
         }
 
