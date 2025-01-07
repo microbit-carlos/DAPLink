@@ -29,6 +29,16 @@
 #include "cmsis_os2.h"
 #include "compiler.h"
 #include "validation.h"
+#include "daplink_debug.h"
+
+// Set to 1 to enable debugging
+#define DEBUG_FILE_STREAM     1
+
+#if DEBUG_FILE_STREAM
+#define stream_printf    debug_msg
+#else
+#define stream_printf(...)
+#endif
 
 typedef enum {
     STREAM_STATE_CLOSED,
@@ -42,6 +52,7 @@ typedef error_t (*stream_open_cb_t)(void *state);
 typedef error_t (*stream_write_cb_t)(void *state, const uint8_t *data, uint32_t size);
 typedef error_t (*stream_close_cb_t)(void *state);
 
+// TODO: rename detect to detect_initial
 typedef struct {
     stream_detect_cb_t detect;
     stream_open_cb_t open;
@@ -60,6 +71,7 @@ typedef struct {
     uint8_t bin_buffer[256];
 } hex_state_t;
 
+//TODO: Should this be updated for the uhex format stream?
 typedef union {
     bin_state_t bin;
     hex_state_t hex;
@@ -75,9 +87,15 @@ static error_t open_hex(void *state);
 static error_t write_hex(void *state, const uint8_t *data, uint32_t size);
 static error_t close_hex(void *state);
 
-stream_t stream[] = {
-    {detect_bin, open_bin, write_bin, close_bin},   // STREAM_TYPE_BIN
-    {detect_hex, open_hex, write_hex, close_hex},   // STREAM_TYPE_HEX
+static bool detect_uhex(const uint8_t *data, uint32_t size);
+static error_t open_uhex(void *state);
+static error_t write_uhex(void *state, const uint8_t *data, uint32_t size);
+static error_t close_uhex(void *state);
+
+static stream_t stream[] = {
+    {detect_bin, open_bin, write_bin, close_bin},       // STREAM_TYPE_BIN
+    {detect_uhex, open_uhex, write_uhex, close_uhex},   // STREAM_TYPE_UHEX
+    {detect_hex, open_hex, write_hex, close_hex},       // STREAM_TYPE_HEX
 };
 COMPILER_ASSERT(ARRAY_SIZE(stream) == STREAM_TYPE_COUNT);
 // STREAM_TYPE_NONE must not be included in count
@@ -104,6 +122,7 @@ stream_type_t stream_start_identify(const uint8_t *data, uint32_t size)
 
     for (i = STREAM_TYPE_START; i < STREAM_TYPE_COUNT; i++) {
         if (stream[i].detect(data, size)) {
+            stream_printf("file_stream start_identify stream=%i\r\n", i);
             return i;
         }
     }
@@ -119,8 +138,29 @@ stream_type_t stream_type_from_name(const vfs_filename_t filename)
         return STREAM_TYPE_BIN;
     } else if (0 == strncmp("HEX", &filename[8], 3)) {
         return STREAM_TYPE_HEX;
+    //TODO: How to deal with uhex here?
     } else {
         return STREAM_TYPE_NONE;
+    }
+}
+
+bool stream_self_contained_block(stream_type_t type, const uint8_t *data, uint32_t size)
+{
+    switch (type) {
+        case STREAM_TYPE_BIN:
+            return false;
+
+        case STREAM_TYPE_HEX:
+            // TODO: The Hex stream can be Intel Hex (ordered) or Universal Hex (which can either)
+            return validate_uhexblock(data) ? true : false;
+
+        case STREAM_TYPE_UHEX:
+            // The Universal Hex stream can be ordered or unordered
+            return validate_uhexblock(data) ? true : false;
+
+        default:
+            util_assert(0);
+            return false;
     }
 }
 
@@ -363,4 +403,34 @@ static error_t close_hex(void *state)
     error_t status;
     status = flash_decoder_close();
     return status;
+}
+
+/* Universal Hex file processing */
+
+static bool detect_uhex(const uint8_t *data, uint32_t size)
+{
+    // TODO: Need to take into account block uHex and sector uHex
+    return 1 == validate_uhexblock(data);
+}
+
+static inline error_t open_uhex(void *state)
+{
+    return open_hex(state);
+}
+
+static inline error_t write_uhex(void *state, const uint8_t *data, uint32_t size)
+{
+    error_t status = write_hex(state, data, size);
+
+    // The block containing the EoF record could arrive at any point
+    if (ERROR_SUCCESS_DONE == status || ERROR_SUCCESS == status) {
+        status = ERROR_SUCCESS_DONE_OR_CONTINUE;
+    }
+
+    return status;
+}
+
+static inline error_t close_uhex(void *state)
+{
+    return close_hex(state);
 }

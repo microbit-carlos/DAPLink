@@ -37,7 +37,7 @@
 #include "error.h"
 
 // Set to 1 to enable debugging
-#define DEBUG_VFS_MANAGER     0
+#define DEBUG_VFS_MANAGER     1
 
 #if DEBUG_VFS_MANAGER
 #define vfs_mngr_printf    debug_msg
@@ -85,6 +85,7 @@ typedef struct {
     bool stream_started;            // Stream processing started. This only gets reset remount
     bool stream_finished;           // Stream processing is done. This only gets reset remount
     bool stream_optional_finish;    // True if the stream processing can be considered done
+    bool stream_ooo_blocks;         // True if the stream data blocks can be processed out of order
     bool file_info_optional_finish; // True if the file transfer can be considered done
     bool transfer_timeout;          // Set if the transfer was finished because of a timeout. This only gets reset remount
     stream_type_t stream;           // Current stream or STREAM_TYPE_NONE is stream is closed.  This only gets reset remount
@@ -106,6 +107,7 @@ static const file_transfer_state_t default_transfer_state = {
     0,
     0,
     TRANSFER_NOT_STARTED,
+    false,
     false,
     false,
     false,
@@ -453,13 +455,20 @@ static void file_data_handler(uint32_t sector, const uint8_t *buf, uint32_t num_
     }
 
     if (file_transfer_state.stream_started) {
-        // Ignore sectors coming before this file
-        if (sector < file_transfer_state.start_sector) {
-            return;
-        }
+        // TODO: If universal or uf2 format is detected we dont' care
+        //       about sector order and can program as we go
+        bool self_contained_block = stream_self_contained_block(file_transfer_state.stream, buf, size);
 
-        // sectors must be in order
-        if (sector != file_transfer_state.file_next_sector) {
+        if (self_contained_block) {
+            vfs_mngr_printf("vfs_manager file_data_handler sector=%i\r\n", sector);
+            vfs_mngr_printf("    sector self contained\r\n");
+            //file_transfer_state.last_ooo_sector = VFS_INVALID_SECTOR;
+            file_transfer_state.stream_ooo_blocks = true;
+        } else if (sector < file_transfer_state.start_sector) {
+            // For ordered streams, ignore sectors coming before this file
+            return;
+        } else if (sector != file_transfer_state.file_next_sector) {
+            // For ordered streams, sector must be the next in the sequence
             vfs_mngr_printf("vfs_manager file_data_handler sector=%i\r\n", sector);
 
             if (sector < file_transfer_state.file_next_sector) {
@@ -761,6 +770,13 @@ static void transfer_update_state(error_t status)
         (file_transfer_state.size_transferred >= file_transfer_state.file_size) &&
         (file_transfer_state.file_size > 0) &&
         (file_transfer_state.start_sector == file_transfer_state.file_start_sector);
+    if (file_transfer_state.stream_ooo_blocks &&
+            //file_transfer_state.transfer_timeout &&
+            file_transfer_state.file_size > 0 &&
+            file_transfer_state.size_transferred >= file_transfer_state.file_size) {
+        vfs_mngr_printf("    OoO file_info_optional_finish=%d\r\n", file_transfer_state.file_info_optional_finish);
+        file_transfer_state.file_info_optional_finish = true;
+    }
     transfer_timeout = file_transfer_state.transfer_timeout;
     transfer_started = (VFS_FILE_INVALID != file_transfer_state.file_to_program) ||
                        (STREAM_TYPE_NONE != file_transfer_state.stream);

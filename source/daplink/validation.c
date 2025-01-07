@@ -94,3 +94,10 @@ uint8_t validate_hexfile(const uint8_t *buf)
         return ((buf[0] == ':') && ((buf[8] == '0') || (buf[8] == '2') || (buf[8] == '3') || (buf[8] == '4') || (buf[8] == '5'))) ? 1 : 0;
     }
 }
+
+uint8_t validate_uhexblock(const uint8_t *buf) {
+    // TODO: double check spec to see if it has to end in new line
+    return (memcmp(buf, (const void *)":02000004", 9) == 0) &&
+            (memcmp(buf + 16, (const void *)":0400000A", 9) == 0);
+            //&& (buf[511] == '\n');
+}
