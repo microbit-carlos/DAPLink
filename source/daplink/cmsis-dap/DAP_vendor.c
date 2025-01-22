@@ -38,12 +38,18 @@
 #include "settings.h"
 #include "target_family.h"
 #include "flash_manager.h"
+#include "virtual_fs.h"
+#include "util.h"
 #include <string.h>
 #include "daplink_vendor_commands.h"
 
 #ifdef DRAG_N_DROP_SUPPORT
 #include "file_stream.h"
 #endif
+
+// TODO: It might be more memory efficient to re-use the usb_buffer from vfs_manager.c
+static uint8_t __ALIGNED(4) file_stream_buffer[VFS_SECTOR_SIZE];
+static uint16_t file_stream_buffer_pos = 0;
 
 //**************************************************************************************************
 /**
@@ -150,20 +156,49 @@ uint32_t DAP_ProcessVendorCommand(const uint8_t *request, uint8_t *response) {
         // open mass storage device stream
         *response = stream_open((stream_type_t)(*request));
         num += (1 << 16) | 1;
+        file_stream_buffer_pos = 0;
         break;
     }
     case ID_DAP_MSD_Close: {
+        // write the remaining data in the buffer
+         if (file_stream_buffer_pos) {
+            *response = stream_write(file_stream_buffer, file_stream_buffer_pos);
+            file_stream_buffer_pos = 0;
+            if (ERROR_SUCCESS != *response &&
+                    ERROR_SUCCESS_DONE != *response &&
+                    ERROR_SUCCESS_DONE_OR_CONTINUE != *response) {
+                num += 1;
+                break;
+            }
+        }
         // close mass storage device stream
         *response = stream_close();
         num += 1;
         break;
     }
     case ID_DAP_MSD_Write: {
-        // write to mass storage device
+        // write to mass storage device in blocks of length == vfs sector size
         uint32_t write_len = *request;
         request++;
         main_blink_msc_led(MAIN_LED_FLASH);
-        *response = stream_write((uint8_t *)request, write_len);
+        if (file_stream_buffer_pos || (write_len % VFS_SECTOR_SIZE)) {
+            uint32_t write_len_left = write_len;
+            while (write_len_left > 0) {
+                uint16_t copy_len = MIN(VFS_SECTOR_SIZE - file_stream_buffer_pos, write_len_left);
+                memcpy(file_stream_buffer + file_stream_buffer_pos, request, copy_len);
+                file_stream_buffer_pos += copy_len;
+                write_len_left -= copy_len;
+                request += copy_len;
+                if (file_stream_buffer_pos >= VFS_SECTOR_SIZE) {
+                    *response = stream_write(file_stream_buffer, VFS_SECTOR_SIZE);
+                    file_stream_buffer_pos = 0;
+                } else {
+                    *response = ERROR_SUCCESS;
+                }
+            }
+        } else {
+            *response = stream_write((uint8_t *)request, write_len);
+        }
         num += ((write_len + 1) << 16) | 1;
         break;
     }
