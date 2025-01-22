@@ -33,6 +33,16 @@
 #pragma GCC optimize("O3")
 #endif
 
+// Set to 1 to enable debugging
+#define DEBUG_INTEL_HEX     1
+
+#if DEBUG_INTEL_HEX
+#include "daplink_debug.h"
+#define ihex_printf    debug_msg
+#else
+#define ihex_printf(...)
+#endif
+
 typedef enum hex_record_t hex_record_t;
 enum hex_record_t {
     DATA_RECORD = 0,
@@ -141,6 +151,14 @@ hexfile_parse_status_t parse_hex_blob(const uint8_t *hex_blob, const uint32_t he
         next_address_to_write = ((next_address_to_write & 0xffff0000) | line.address) + line.byte_count;
     }
 
+    // print hex block as ascii
+/*
+    ihex_printf("\n\nhex block (%d):\n", hex_blob_size);
+    for (int i = 0; i < hex_blob_size; i++) {
+        ihex_printf("%c", hex_blob[i]);
+    }
+    ihex_printf("\n");
+*/
     while (hex_blob != end) {
         switch ((uint8_t)(*hex_blob)) {
             // we've hit the end of an ascii line
@@ -165,6 +183,12 @@ hexfile_parse_status_t parse_hex_blob(const uint8_t *hex_blob, const uint32_t he
                     if (++idx >= (line.byte_count + 5)) { //all data in
                         if (0 == validate_checksum(&line)) {
                             status = HEX_PARSE_CKSUM_FAIL;
+                            // print the line hex contents
+                            ihex_printf("\nhex line :");
+                            for (int i = 0; i < (line.byte_count + 5); i++) {
+                                ihex_printf("%02x", line.buf[i]);
+                            }
+                            ihex_printf("\n\n");
                             goto hex_parser_exit;
                         } else {
                             if (!record_processed) {

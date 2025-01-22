@@ -31,7 +31,7 @@
 #include "validation.h"
 
 // Set to 1 to enable debugging
-#define DEBUG_FILE_STREAM     0
+#define DEBUG_FILE_STREAM     1
 
 #if DEBUG_FILE_STREAM
 #include "daplink_debug.h"
