@@ -71,7 +71,6 @@ typedef struct {
     uint8_t bin_buffer[256];
 } hex_state_t;
 
-//TODO: Should this be updated for the uhex format stream?
 typedef union {
     bin_state_t bin;
     hex_state_t hex;
@@ -87,15 +86,15 @@ static error_t open_hex(void *state);
 static error_t write_hex(void *state, const uint8_t *data, uint32_t size);
 static error_t close_hex(void *state);
 
-static bool detect_uhex(const uint8_t *data, uint32_t size);
-static error_t open_uhex(void *state);
-static error_t write_uhex(void *state, const uint8_t *data, uint32_t size);
-static error_t close_uhex(void *state);
+static bool detect_uhex_blocks(const uint8_t *data, uint32_t size);
+static error_t open_uhex_blocks(void *state);
+static error_t write_uhex_blocks(void *state, const uint8_t *data, uint32_t size);
+static error_t close_uhex_blocks(void *state);
 
 static stream_t stream[] = {
-    {detect_bin, open_bin, write_bin, close_bin},       // STREAM_TYPE_BIN
-    {detect_uhex, open_uhex, write_uhex, close_uhex},   // STREAM_TYPE_UHEX
-    {detect_hex, open_hex, write_hex, close_hex},       // STREAM_TYPE_HEX
+    {detect_bin, open_bin, write_bin, close_bin},   // STREAM_TYPE_BIN
+    {detect_hex, open_hex, write_hex, close_hex},   // STREAM_TYPE_HEX
+    {detect_uhex_blocks, open_uhex_blocks, write_uhex_blocks, close_uhex_blocks},   // STREAM_TYPE_UHEX_BLOCKS
 };
 COMPILER_ASSERT(ARRAY_SIZE(stream) == STREAM_TYPE_COUNT);
 // STREAM_TYPE_NONE must not be included in count
@@ -137,11 +136,26 @@ stream_type_t stream_type_from_name(const vfs_filename_t filename)
     if (0 == strncmp("BIN", &filename[8], 3)) {
         return STREAM_TYPE_BIN;
     } else if (0 == strncmp("HEX", &filename[8], 3)) {
-        return STREAM_TYPE_HEX;
-    //TODO: How to deal with uhex here?
+        return STREAM_TYPE_HEX_OR_UHEX;
     } else {
         return STREAM_TYPE_NONE;
     }
+}
+
+bool stream_compatible(stream_type_t type_left, stream_type_t type_right)
+{
+    if (type_left == type_right) {
+        return true;
+    }
+
+    if ((type_left == STREAM_TYPE_HEX_OR_UHEX &&
+            (type_right == STREAM_TYPE_HEX || type_right == STREAM_TYPE_UHEX_BLOCKS)) ||
+        (type_right == STREAM_TYPE_HEX_OR_UHEX &&
+            (type_left == STREAM_TYPE_HEX || type_left == STREAM_TYPE_UHEX_BLOCKS))) {
+        return true;
+    }
+
+    return false;
 }
 
 bool stream_self_contained_block(stream_type_t type, const uint8_t *data, uint32_t size)
@@ -151,12 +165,12 @@ bool stream_self_contained_block(stream_type_t type, const uint8_t *data, uint32
             return false;
 
         case STREAM_TYPE_HEX:
-            // TODO: The Hex stream can be Intel Hex (ordered) or Universal Hex (which can either)
-            return validate_uhexblock(data) ? true : false;
+            // A hex stream can also be a Universal Hex stream
+            return validate_uhex_block(data) ? true : false;
 
-        case STREAM_TYPE_UHEX:
-            // The Universal Hex stream can be ordered or unordered
-            return validate_uhexblock(data) ? true : false;
+        case STREAM_TYPE_UHEX_BLOCKS:
+            // The Universal Hex stream can be ordered (sectors) or unordered (blocks)
+            return validate_uhex_block(data) ? true : false;
 
         default:
             util_assert(0);
@@ -187,6 +201,7 @@ error_t stream_open(stream_type_t stream_type)
     current_stream = &stream[stream_type];
     // Initialize the specified stream
     status = current_stream->open(&shared_state);
+    stream_printf("file_stream stream_open(type=%d); open ret=%d\r\n", stream_type, status);
 
     if (ERROR_SUCCESS != status) {
         state = STREAM_STATE_ERROR;
@@ -210,6 +225,7 @@ error_t stream_write(const uint8_t *data, uint32_t size)
     stream_thread_assert();
     // Write to stream
     status = current_stream->write(&shared_state, data, size);
+    stream_printf("file_stream stream_write(size=%d); write ret=%d\r\n", size, status);
 
     if (ERROR_SUCCESS_DONE == status) {
         state = STREAM_STATE_END;
@@ -238,6 +254,7 @@ error_t stream_close(void)
     stream_thread_assert();
     // Close stream
     status = current_stream->close(&shared_state);
+    stream_printf("file_stream stream_close; close ret=%d\r\n", status);
     state = STREAM_STATE_CLOSED;
     return status;
 }
@@ -329,6 +346,12 @@ static error_t close_bin(void *state)
 
 static bool detect_hex(const uint8_t *data, uint32_t size)
 {
+    // Universal hex will pass the hex file validation, but a Universal Hex in
+    // block format needs to be processed as a "Universal Hex Blocks" stream.
+    // A Universal Hex in segment format can be be processed as a hex stream.
+    if (1 == validate_uhex_block(data)) {
+        return false;
+    }
     return 1 == validate_hexfile(data);
 }
 
@@ -355,6 +378,7 @@ static error_t write_hex(void *state, const uint8_t *data, uint32_t size)
     while (1) {
         // try to decode a block of hex data into bin data
         parse_status = parse_hex_blob(data, size, &block_amt_parsed, hex_state->bin_buffer, sizeof(hex_state->bin_buffer), &bin_start_address, &bin_buf_written);
+        stream_printf("file_stream write_hex; parse_hex_blob ret=%d, bin_buf_written=%d\r\n", parse_status, bin_buf_written);
 
         // the entire block of hex was decoded. This is a simple state
         if (HEX_PARSE_OK == parse_status) {
@@ -405,20 +429,22 @@ static error_t close_hex(void *state)
     return status;
 }
 
-/* Universal Hex file processing */
+/* Universal Hex, block format, file processing */
+/* https://tech.microbit.org/software/spec-universal-hex/ */
+/* The Universal Hex segment format is processed by the Intel Hex parser. */
+/* This stream is for the Universal Hex block format only. */
 
-static bool detect_uhex(const uint8_t *data, uint32_t size)
+static bool detect_uhex_blocks(const uint8_t *data, uint32_t size)
 {
-    // TODO: Need to take into account block uHex and sector uHex
-    return 1 == validate_uhexblock(data);
+    return 1 == validate_uhex_block(data);
 }
 
-static inline error_t open_uhex(void *state)
+static inline error_t open_uhex_blocks(void *state)
 {
     return open_hex(state);
 }
 
-static inline error_t write_uhex(void *state, const uint8_t *data, uint32_t size)
+static inline error_t write_uhex_blocks(void *state, const uint8_t *data, uint32_t size)
 {
     error_t status = write_hex(state, data, size);
 
@@ -430,7 +456,7 @@ static inline error_t write_uhex(void *state, const uint8_t *data, uint32_t size
     return status;
 }
 
-static inline error_t close_uhex(void *state)
+static inline error_t close_uhex_blocks(void *state)
 {
     return close_hex(state);
 }

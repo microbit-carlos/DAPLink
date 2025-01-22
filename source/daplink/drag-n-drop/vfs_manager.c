@@ -358,9 +358,18 @@ static void sync_init(void)
     sync_mutex = osMutexNew(NULL);
 }
 
+volatile bool fail = false;
+volatile static osThreadId_t now_thread = 0;
 static void sync_assert_usb_thread(void)
 {
-    util_assert(osThreadGetId() == sync_thread);
+    //util_assert(osThreadGetId() == sync_thread);
+    now_thread = osThreadGetId();
+    if (now_thread != sync_thread) {
+        fail = true;
+        util_assert(osThreadGetId() == sync_thread);
+    } else {
+        fail = false;
+    }
 }
 
 static void sync_lock(void)
@@ -441,13 +450,13 @@ static void file_change_handler(const vfs_filename_t filename, vfs_file_change_t
 static void file_data_handler(uint32_t sector, const uint8_t *buf, uint32_t num_of_sectors)
 {
     stream_type_t stream;
-    uint32_t size;
+    uint32_t size = VFS_SECTOR_SIZE * num_of_sectors;
 
     // this is the key for starting a file write - we dont care what file types are sent
     //  just look for something unique (NVIC table, hex, srec, etc) until root dir is updated
     if (!file_transfer_state.stream_started) {
         // look for file types we can program
-        stream = stream_start_identify((uint8_t *)buf, VFS_SECTOR_SIZE * num_of_sectors);
+        stream = stream_start_identify((uint8_t *)buf, size);
 
         if (STREAM_TYPE_NONE != stream) {
             transfer_stream_open(stream, sector);
@@ -461,9 +470,17 @@ static void file_data_handler(uint32_t sector, const uint8_t *buf, uint32_t num_
 
         if (self_contained_block) {
             vfs_mngr_printf("vfs_manager file_data_handler sector=%i\r\n", sector);
-            vfs_mngr_printf("    sector self contained\r\n");
+            vfs_mngr_printf("    sector self-contained\r\n");
             //file_transfer_state.last_ooo_sector = VFS_INVALID_SECTOR;
             file_transfer_state.stream_ooo_blocks = true;
+        } else if (file_transfer_state.stream_ooo_blocks) {
+            // Invalid block for a self-contained stream, can be ignored
+            vfs_mngr_printf("vfs_manager file_data_handler sector=%i\r\n", sector);
+            vfs_mngr_printf("    invalid data for self-contained stream\r\n");
+            vfs_mngr_printf("    size=%d data=%x,%x,%x,%x,...,%x,%x,%x,%x\r\n",
+                            size, buf[0], buf[1], buf[2], buf[3], buf[size - 4],
+                            buf[size - 3], buf[size - 2], buf[size - 1]);
+            return;
         } else if (sector < file_transfer_state.start_sector) {
             // For ordered streams, ignore sectors coming before this file
             return;
@@ -491,7 +508,6 @@ static void file_data_handler(uint32_t sector, const uint8_t *buf, uint32_t num_
         }
 
         // This sector could be part of the file so record it
-        size = VFS_SECTOR_SIZE * num_of_sectors;
         file_transfer_state.size_transferred += size;
         file_transfer_state.file_next_sector = sector + num_of_sectors;
 
@@ -594,13 +610,13 @@ static void transfer_update_file_info(vfs_file_t file, uint32_t start_sector, ui
     }
 
     // Initialize the stream if it has not been set
-    if (STREAM_TYPE_NONE == file_transfer_state.stream) {
-        file_transfer_state.stream = stream;
+    //if (STREAM_TYPE_NONE == file_transfer_state.stream) {
+    //    file_transfer_state.stream = stream;
 
-        if (stream != STREAM_TYPE_NONE) {
-            vfs_mngr_printf("    stream=%i\r\n", stream);
-        }
-    }
+    //    if (stream != STREAM_TYPE_NONE) {
+    //        vfs_mngr_printf("    stream=%i\r\n", stream);
+    //    }
+    //}
 
     // Check - File size must either grow or be smaller than the size already transferred
     if ((size < file_transfer_state.file_size) && (size < file_transfer_state.size_transferred) && (size > 0)) {
@@ -617,7 +633,7 @@ static void transfer_update_file_info(vfs_file_t file, uint32_t start_sector, ui
     }
 
     // Check - stream must be the same
-    if ((stream != STREAM_TYPE_NONE) && (stream != file_transfer_state.stream)) {
+    if (stream != STREAM_TYPE_NONE && file_transfer_state.stream != STREAM_TYPE_NONE && !stream_compatible(file_transfer_state.stream, stream)) {
         vfs_mngr_printf("    error: changed types during transfer from %i to %i\r\n", file_transfer_state.stream, stream);
         transfer_update_state(ERROR_ERROR_DURING_TRANSFER);
         return;
