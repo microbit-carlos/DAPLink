@@ -250,6 +250,8 @@ static error_t target_flash_program_page(uint32_t addr, const uint8_t *buf, uint
 
             if (config_get_automation_allowed()) {
                 // Verify data flashed if in automation mode
+                // TODO: This fails during testing when automation is enabled
+                //       with the ooo uhex test file
                 if (flash->verify != 0) {
                     status = flash_func_start(FLASH_FUNC_VERIFY);
                     if (status != ERROR_SUCCESS) {

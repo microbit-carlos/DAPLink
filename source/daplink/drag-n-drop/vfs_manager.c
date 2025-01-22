@@ -38,7 +38,7 @@
 
 // Set to 1 to enable debugging
 #ifndef DEBUG_VFS_MANAGER
-#define DEBUG_VFS_MANAGER     0
+#define DEBUG_VFS_MANAGER     1
 #endif
 
 #if DEBUG_VFS_MANAGER

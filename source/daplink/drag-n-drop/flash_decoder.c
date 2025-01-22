@@ -33,7 +33,7 @@
 
 // Set to 1 to enable debugging
 #ifndef DEBUG_FLASH_DECODER
-#define DEBUG_FLASH_DECODER     0
+#define DEBUG_FLASH_DECODER     1
 #endif
 
 #if DEBUG_FLASH_DECODER
