@@ -67,7 +67,7 @@ uint32_t daplink_debug(uint8_t *buf, uint32_t size)
 }
 #endif
 
-static char daplink_debug_buf[128] = {0};
+static char daplink_debug_buf[1024] = {0};
 uint32_t daplink_debug_print(const char *format, ...)
 {
     uint32_t ret;

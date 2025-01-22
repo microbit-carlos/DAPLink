@@ -340,7 +340,7 @@
 #define USBD_CDC_ACM_EP_BULKIN_STACK    0
 #define USBD_CDC_ACM_WMAXPACKETSIZE1    64
 #define USBD_CDC_ACM_HS_ENABLE1         1
-#define USBD_CDC_ACM_HS_WMAXPACKETSIZE1 64
+#define USBD_CDC_ACM_HS_WMAXPACKETSIZE1 512
 #define USBD_CDC_ACM_HS_BINTERVAL1      1
 #define USBD_CDC_ACM_CIF_STRDESC        L"mbed Serial Port"
 #define USBD_CDC_ACM_DIF_STRDESC        L"mbed Serial Port"
@@ -392,6 +392,7 @@
 #define USBD_BULK_EP_BULKIN          5
 #define USBD_BULK_EP_BULKOUT         5
 // #define USBD_BULK_EP_BULKIN_SWO      6
+// TODO: this
 #define USBD_BULK_WMAXPACKETSIZE     64
 #define USBD_BULK_HS_ENABLE          0
 #define USBD_BULK_HS_WMAXPACKETSIZE  512
