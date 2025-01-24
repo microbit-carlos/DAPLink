@@ -185,6 +185,9 @@ bool stream_self_contained_block(stream_type_t type, const uint8_t *data, uint32
             // The Universal Hex stream can be ordered (sectors) or unordered (blocks)
             return validate_uhex_block(data, size) ? true : false;
 
+        case STREAM_TYPE_UF2:
+            return validate_uf2block(data, size) ? true : false;
+
         default:
             util_assert(0);
             return false;
@@ -494,21 +497,24 @@ static error_t open_uf2(void *state)
 
 static error_t write_uf2(void *state, const uint8_t *data, uint32_t size)
 {
-    error_t status = ERROR_SUCCESS;
-    uint32_t start_addr;
-    const flash_intf_t *flash_intf;
+    error_t status;
     const UF2_Block *block;
 
     if (1 != validate_uf2block(data, size)) {
+        stream_printf("file_stream write_uf2; validation failed\r\n");
         return ERROR_FD_UNSUPPORTED_UPDATE;
     }
 
     block = (const UF2_Block *)data;
     if (block->flags & UF2_FLAG_NOFLASH) {
-        return ERROR_SUCCESS;
+        stream_printf("file_stream write_uf2; no flash data\r\n");
+        return ERROR_SUCCESS_DONE_OR_CONTINUE;
     }
 
     status = flash_decoder_write(block->targetAddr, block->data, block->payloadSize);
+    if (ERROR_SUCCESS_DONE == status || ERROR_SUCCESS == status) {
+        status = ERROR_SUCCESS_DONE_OR_CONTINUE;
+    }
 
     return status;
 }
