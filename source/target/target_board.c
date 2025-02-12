@@ -40,6 +40,24 @@ __WEAK const char * NO_OPTIMIZE_INLINE get_board_id(void)
 }
 NO_OPTIMIZE_POST
 
+uint16_t get_board_id_number(void) {
+    uint16_t board_id_uint16 = 0;
+    const char *board_id = get_board_id();
+
+    // The Board ID is composed of up to 4 hex characters
+    for (const char *c = board_id; *c != '\0' && c < board_id + 4; c++) {
+        board_id_uint16 <<= 4;
+        if (*c >= '0' && *c <= '9') {
+            board_id_uint16 |= *c - '0';
+        } else if (*c >= 'A' && *c <= 'F') {
+            board_id_uint16 |= *c - 'A' + 10;
+        } else if (*c >= 'a' && *c <= 'f') {
+            board_id_uint16 |= *c - 'a' + 10;
+        }
+    }
+    return board_id_uint16;
+}
+
 NO_OPTIMIZE_PRE
 __WEAK uint16_t NO_OPTIMIZE_INLINE get_family_id(void)
 {

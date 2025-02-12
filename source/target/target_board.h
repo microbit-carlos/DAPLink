@@ -82,6 +82,11 @@ typedef struct board_info {
     char *board_vendor; //!< Board vendor. Maximum 60 characters including terminal NULL.
     char *board_name;   //!< Board name. Maximum 60 characters including terminal NULL.
     //@}
+
+    //! @name UF2 customization
+    //@{
+    uint8_t (*uf2_block_compatible)(const uint8_t *buf, uint32_t size);
+    //@}
 } board_info_t;
 
 //! @brief Information describing the board on which DAPLink is running.
@@ -95,6 +100,9 @@ extern "C" {
 //!
 //! For firmware with no board, the board ID is "0000".
 const char * get_board_id(void);
+
+//! @brief Returns the number equivalent of the board ID.
+uint16_t get_board_id_number(void);
 
 //! @brief Returns the family ID for the target associated with the board.
 //!

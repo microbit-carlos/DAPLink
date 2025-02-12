@@ -30,6 +30,7 @@
 #include "cmsis_os2.h"
 #include "compiler.h"
 #include "validation.h"
+#include "target_board.h"
 
 // Set to 1 to enable debugging
 #define DEBUG_FILE_STREAM     0
@@ -72,7 +73,7 @@ typedef struct {
 } hex_state_t;
 
 typedef struct {
-    // bool parsing_complete;
+    uint32_t family_id_board_id;
 } uf2_state_t;
 
 typedef union {
@@ -488,9 +489,12 @@ static bool detect_uf2(const uint8_t *data, uint32_t size)
 static error_t open_uf2(void *state)
 {
     error_t status;
-    // uf2_state_t *uf2_state = (uf2_state_t *)state;
-    // memset(uf2_state, 0, sizeof(*uf2_state));
-    // uf2_state->parsing_complete = false;
+
+    uf2_state_t *uf2_state = (uf2_state_t *)state;
+    memset(uf2_state, 0, sizeof(*uf2_state));
+    uf2_state->family_id_board_id = UF2_DAPLINK_FAMILY_RANGE | get_board_id_number();
+    stream_printf("file_stream open_uf2; family_id_board_id=0x%08x\r\n", uf2_state->family_id_board_id);
+
     status = flash_decoder_open();
     return status;
 }
@@ -498,7 +502,10 @@ static error_t open_uf2(void *state)
 static error_t write_uf2(void *state, const uint8_t *data, uint32_t size)
 {
     error_t status;
+    bool block_compatible;
+    static const uint32_t first_family_id;
     const UF2_Block *block;
+    const uf2_state_t *uf2_state;
 
     if (1 != validate_uf2block(data, size)) {
         stream_printf("file_stream write_uf2; validation failed\r\n");
@@ -511,6 +518,26 @@ static error_t write_uf2(void *state, const uint8_t *data, uint32_t size)
         return ERROR_SUCCESS_DONE_OR_CONTINUE;
     }
 
+    if (g_board_info.uf2_block_compatible) {
+        block_compatible = g_board_info.uf2_block_compatible(data, size);
+    } else {
+        uf2_state = (uf2_state_t *)state;
+        block_compatible = !(block->flags & UF2_FLAG_FAMILY_ID)
+            // The official UF2 family ID for the target MCU
+            || (g_board_info.target_cfg->uf2_family_id &&
+                (UF2_BLOCK_FAMILY_ID(block) == g_board_info.target_cfg->uf2_family_id))
+            // Family ID derived from the board ID
+            || (UF2_BLOCK_FAMILY_ID(block) == uf2_state->family_id_board_id);
+    }
+    if (!block_compatible) {
+        stream_printf("file_stream write_uf2; block not compatible\r\n");
+        return ERROR_SUCCESS_DONE_OR_CONTINUE;
+    }
+
+    if (block->payloadSize > sizeof(block->data)) {
+        stream_printf("file_stream write_uf2; invalid payloadSize=%d\r\n", block->payloadSize);
+        return ERROR_FD_UNSUPPORTED_UPDATE;
+    }
     status = flash_decoder_write(block->targetAddr, block->data, block->payloadSize);
     if (ERROR_SUCCESS_DONE == status || ERROR_SUCCESS == status) {
         status = ERROR_SUCCESS_DONE_OR_CONTINUE;

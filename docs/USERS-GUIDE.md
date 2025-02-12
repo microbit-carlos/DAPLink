@@ -10,6 +10,8 @@ Supported file formats:
 
 - Raw binary file.
 - Intel Hex.
+- [Universal Hex](https://tech.microbit.org/software/spec-universal-hex/)
+- [UF2](https://github.com/microsoft/uf2)
 
 ## Serial port
 

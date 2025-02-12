@@ -20,6 +20,7 @@
  */
 
 #include "target_config.h"
+#include "uf2.h"
 
 // The file flash_blob.c must only be included in target.c
 #include "flash_blob.c"
@@ -35,6 +36,7 @@ target_cfg_t target_device_nrf52 = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash_nrf52,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20008000,
+    .uf2_family_id                  = UF2_FAMILY_ID_NRF52,
     .erase_reset                    = 1,
     .target_vendor                  = "NordicSemiconductor",
     .target_part_number             = "nRF52832_xxAB",
@@ -51,6 +53,7 @@ target_cfg_t target_device_nrf52_64 = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash_nrf52,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20010000,
+    .uf2_family_id                  = UF2_FAMILY_ID_NRF52832_AA,
     .erase_reset                    = 1,
     .target_vendor                  = "NordicSemiconductor",
     .target_part_number             = "nRF52832_xxAA",
@@ -67,6 +70,7 @@ target_cfg_t target_device_nrf52833 = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash_nrf52833,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20020000,
+    .uf2_family_id                  = UF2_FAMILY_ID_NRF52833,
     .erase_reset                    = 1,
     .target_vendor                  = "NordicSemiconductor",
     .target_part_number             = "nRF52833_xxAA",
@@ -83,6 +87,7 @@ target_cfg_t target_device_nrf52840 = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash_nrf52,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20040000,
+    .uf2_family_id                  = UF2_FAMILY_ID_NRF52840,
     .erase_reset                    = 1,
     .target_vendor                  = "NordicSemiconductor",
     .target_part_number             = "nRF52840_xxAA",

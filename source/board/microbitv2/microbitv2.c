@@ -30,6 +30,7 @@
 #include "flash_manager.h"
 #include "virtual_fs.h"
 #include "vfs_manager.h"
+#include "uf2.h"
 #include "device.h"
 #include "main_interface.h"
 
@@ -51,6 +52,9 @@
 // Declared in intelhex.c
 uint16_t board_id_hex_default = BOARD_VERSION_2_DEF;
 uint16_t board_id_hex = BOARD_VERSION_2_DEF;
+
+// Used for custom UF2 validation
+uint32_t uf2_family_id_runtime_board_id = UF2_DAPLINK_FAMILY_RANGE | BOARD_VERSION_2_DEF;
 
 extern target_cfg_t target_device_nrf52833;
 
@@ -100,6 +104,7 @@ static void set_board_id(mb_version_t board_version) {
             board_id_hex = BOARD_VERSION_2_DEF;
             break;
     }
+    uf2_family_id_runtime_board_id = UF2_DAPLINK_FAMILY_RANGE | board_id_hex;
 }
 
 // Apply a gamma curve to the LED. Input brightness between 0-255
@@ -471,6 +476,20 @@ static uint8_t target_set_state_microbit(target_state_t state)
     return 0;
 }
 
+static uint8_t uf2_block_compatible(const uint8_t *buf, uint32_t size) {
+    const UF2_Block *block = (const UF2_Block *)buf;
+
+    // Check in order or likelihood:
+    // 1. Family ID for the generic micro:bit V2 Board ID (compatible with all V2 versions)
+    // 2. UF2 official family ID for nRF52833
+    // 3. Family ID for DAPLink Board ID for this specific micro:bit V2.x version
+    return !(block->flags & UF2_FLAG_FAMILY_ID)
+        || UF2_BLOCK_FAMILY_ID(block) == (UF2_DAPLINK_FAMILY_RANGE | BOARD_VERSION_2_DEF)
+        || UF2_BLOCK_FAMILY_ID(block) == uf2_family_id_runtime_board_id
+        || (g_board_info.target_cfg->uf2_family_id &&
+            (UF2_BLOCK_FAMILY_ID(block) == g_board_info.target_cfg->uf2_family_id));
+}
+
 const board_info_t g_board_info = {
     .info_version = kBoardInfoVersion,
     .family_id = kNordic_Nrf52_FamilyID,
@@ -482,4 +501,5 @@ const board_info_t g_board_info = {
     .target_set_state = target_set_state_microbit,
     .board_vendor = "Micro:bit Educational Foundation",
     .board_name = "BBC micro:bit V2",
+    .uf2_block_compatible = uf2_block_compatible,
 };

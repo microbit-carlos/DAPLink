@@ -68,6 +68,7 @@ typedef struct __attribute__((__packed__)) target_cfg {
     region_info_t flash_regions[MAX_REGIONS];   /*!< Flash regions */
     region_info_t ram_regions[MAX_REGIONS];     /*!< RAM regions  */
     const char *rt_board_id;                    /*!< If assigned, this is a flexible board ID */
+    uint32_t uf2_family_id;                     /*!< If assigned, this is the generic UF2 family ID */
     uint16_t rt_family_id;                      /*!< If assigned, this is a flexible family ID */
     uint8_t erase_reset;                        /*!< Reset after performing an erase */
     uint8_t pad;
