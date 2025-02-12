@@ -20,6 +20,7 @@
  */
 
 #include "target_config.h"
+#include "uf2.h"
 
 // The file flash_blob.c must only be included in target.c
 #include "flash_blob.c"
@@ -35,6 +36,7 @@ target_cfg_t target_device = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20020000,
+    .uf2_family_id                  = UF2_FAMILY_ID_STM32F407,
     .target_vendor                  = "STMicroelectronics",
     .target_part_number             = "STM32F407VETx",
 };

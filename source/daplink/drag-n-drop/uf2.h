@@ -46,6 +46,20 @@ SOFTWARE.
 #define UF2_FLAG_MD5_CHKSUM     0x00004000 // MD5 checksum present
 #define UF2_FLAG_EXTENSION_TAGS 0x00008000 // extension tags present
 
+// The Family ID 0xDA91xxxx range is saved for DAPLink Board IDs
+#define UF2_DAPLINK_FAMILY_RANGE            0xDA910000
+#define UF2_BLOCK_FAMILY_ID(bl)             ((bl)->reserved)
+
+// From https://github.com/microsoft/uf2/blob/da3aac9f98eb4ecdb4bc2f3e21bc1a44c246f00e/utils/uf2families.json
+#define UF2_FAMILY_ID_NRF52                 0x1b57745fu
+#define UF2_FAMILY_ID_NRF52820              0x820d9a5fu
+#define UF2_FAMILY_ID_NRF52832_AA           0x621e937au
+#define UF2_FAMILY_ID_NRF52833              0x621e937au
+#define UF2_FAMILY_ID_NRF52840              0xada52840u
+#define UF2_FAMILY_ID_STM32F103             0x5ee21072u
+#define UF2_FAMILY_ID_STM32F407             0x6d0922fau
+#define UF2_FAMILY_ID_STM32F411XE           0x2dc309c5u
+
 typedef struct {
     // 32 byte header
     uint32_t magicStart0;

@@ -119,9 +119,5 @@ uint8_t validate_uf2block(const uint8_t *buf, uint32_t size)
         return 0;
     }
 
-    if (block->payloadSize > sizeof(block->data)) {
-        return 0;
-    }
-
     return 1;
 }

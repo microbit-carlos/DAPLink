@@ -49,7 +49,7 @@ This assumes there is already target support present in the codebase. If adding 
 extern target_cfg_t target_device_nrf51822_16;
 
 const board_info_t g_board_info = {
-    .board_id = "0x240",
+    .board_id = "0240",
     .family_id = kStub_HWReset_FamilyID,
     .flags = kEnablePageErase|kEnableUnderResetConnect,
     .target_cfg = &target_device_nrf51822_16,
