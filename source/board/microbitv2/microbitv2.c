@@ -54,7 +54,7 @@ uint16_t board_id_hex_default = BOARD_VERSION_2_DEF;
 uint16_t board_id_hex = BOARD_VERSION_2_DEF;
 
 // Used for custom UF2 validation
-uint32_t uf2_family_id_runtime_board_id = UF2_DAPLINK_FAMILY_RANGE | BOARD_VERSION_2_DEF;
+uint32_t uf2_family_id_runtime_board_id = UF2_DAPLINK_TARGET_FAMILY_RANGE | BOARD_VERSION_2_DEF;
 
 extern target_cfg_t target_device_nrf52833;
 
@@ -104,7 +104,7 @@ static void set_board_id(mb_version_t board_version) {
             board_id_hex = BOARD_VERSION_2_DEF;
             break;
     }
-    uf2_family_id_runtime_board_id = UF2_DAPLINK_FAMILY_RANGE | board_id_hex;
+    uf2_family_id_runtime_board_id = UF2_DAPLINK_TARGET_FAMILY_RANGE | board_id_hex;
 }
 
 // Apply a gamma curve to the LED. Input brightness between 0-255
@@ -477,17 +477,28 @@ static uint8_t target_set_state_microbit(target_state_t state)
 }
 
 static uint8_t uf2_block_compatible(const uint8_t *buf, uint32_t size) {
+    static uint32_t family_id_locked = 0;
     const UF2_Block *block = (const UF2_Block *)buf;
 
-    // Check in order or likelihood:
-    // 1. Family ID for the generic micro:bit V2 Board ID (compatible with all V2 versions)
+    if (!(block->flags & UF2_FLAG_FAMILY_ID)) {
+        return 1;
+    }
+    if (family_id_locked) {
+        return UF2_BLOCK_FAMILY_ID(block) == family_id_locked;
+    }
+
+    // Family IDs to check:
+    // 1. Generic micro:bit V2 Board ID (compatible with all V2 versions)
     // 2. UF2 official family ID for nRF52833
-    // 3. Family ID for DAPLink Board ID for this specific micro:bit V2.x version
-    return !(block->flags & UF2_FLAG_FAMILY_ID)
-        || UF2_BLOCK_FAMILY_ID(block) == (UF2_DAPLINK_FAMILY_RANGE | BOARD_VERSION_2_DEF)
+    // 3. Family ID for DAPLink Board ID for this specific micro:bit V2 version
+    uint8_t compatible = UF2_BLOCK_FAMILY_ID(block) == (UF2_DAPLINK_TARGET_FAMILY_RANGE | BOARD_VERSION_2_DEF)
         || UF2_BLOCK_FAMILY_ID(block) == uf2_family_id_runtime_board_id
         || (g_board_info.target_cfg->uf2_family_id &&
             (UF2_BLOCK_FAMILY_ID(block) == g_board_info.target_cfg->uf2_family_id));
+    if (compatible) {
+        family_id_locked = UF2_BLOCK_FAMILY_ID(block);
+    }
+    return compatible;
 }
 
 const board_info_t g_board_info = {

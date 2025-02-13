@@ -47,7 +47,8 @@ SOFTWARE.
 #define UF2_FLAG_EXTENSION_TAGS 0x00008000 // extension tags present
 
 // The Family ID 0xDA91xxxx range is saved for DAPLink Board IDs
-#define UF2_DAPLINK_FAMILY_RANGE            0xDA910000
+#define UF2_DAPLINK_TARGET_FAMILY_RANGE     0xDA910000
+#define UF2_DAPLINK_IF_FAMILY_RANGE         0xDA900000
 #define UF2_BLOCK_FAMILY_ID(bl)             ((bl)->reserved)
 
 // From https://github.com/microsoft/uf2/blob/da3aac9f98eb4ecdb4bc2f3e21bc1a44c246f00e/utils/uf2families.json
