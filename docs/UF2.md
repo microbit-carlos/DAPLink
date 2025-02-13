@@ -13,6 +13,9 @@ https://github.com/microsoft/uf2/blob/d03b585ed780ed51bb0d1e6e8cf233aacb408305/R
         - This struct value is optional and not all targets has it configured
     - Blocks with the DAPLink family ID, where the 2 MSBytes are `0xDA91`
       and the 2 LSBytes are the Board Id, i.e. `0xDA910000 | (uint16_t)board_id`
+- In a UF2 files with more than one compatible Family ID, DAPLink will only
+  flash blocks for the first match it finds.
+- Data blocks without the Family ID flag will always be flashed
 - The validation to detect if a UF2 block is compatible can be overwritten
   per target
 - A UF2 file without blocks for this target will raise the

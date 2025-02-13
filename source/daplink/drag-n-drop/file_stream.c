@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "file_stream.h"
+#include "daplink.h"
 #include "util.h"
 #include "intelhex.h"
 #include "uf2.h"
@@ -74,6 +75,7 @@ typedef struct {
 
 typedef struct {
     uint32_t family_id_board_id;
+    uint32_t family_id_lock;
 } uf2_state_t;
 
 typedef union {
@@ -492,7 +494,13 @@ static error_t open_uf2(void *state)
 
     uf2_state_t *uf2_state = (uf2_state_t *)state;
     memset(uf2_state, 0, sizeof(*uf2_state));
-    uf2_state->family_id_board_id = UF2_DAPLINK_FAMILY_RANGE | get_board_id_number();
+
+    // The DAPLink interface looks for the Family ID range to flash the target
+    // and the DAPLink bootloader the Family ID range to update the Interface
+    uf2_state->family_id_board_id = daplink_is_interface()
+        ? UF2_DAPLINK_TARGET_FAMILY_RANGE
+        : UF2_DAPLINK_IF_FAMILY_RANGE;
+    uf2_state->family_id_board_id |= get_board_id_number();
     stream_printf("file_stream open_uf2; family_id_board_id=0x%08x\r\n", uf2_state->family_id_board_id);
 
     status = flash_decoder_open();
@@ -503,9 +511,8 @@ static error_t write_uf2(void *state, const uint8_t *data, uint32_t size)
 {
     error_t status;
     bool block_compatible;
-    static const uint32_t first_family_id;
     const UF2_Block *block;
-    const uf2_state_t *uf2_state;
+    uf2_state_t *uf2_state = (uf2_state_t *)state;
 
     if (1 != validate_uf2block(data, size)) {
         stream_printf("file_stream write_uf2; validation failed\r\n");
@@ -520,14 +527,22 @@ static error_t write_uf2(void *state, const uint8_t *data, uint32_t size)
 
     if (g_board_info.uf2_block_compatible) {
         block_compatible = g_board_info.uf2_block_compatible(data, size);
+    } else if (!(block->flags & UF2_FLAG_FAMILY_ID)) {
+        block_compatible = true;
+    } else if (uf2_state->family_id_lock) {
+        block_compatible = UF2_BLOCK_FAMILY_ID(block) == uf2_state->family_id_lock;
+    } else if (daplink_is_bootloader()) {
+        // Bootloader only accepts the Family ID for DAPLink interfaces
+        block_compatible = (UF2_BLOCK_FAMILY_ID(block) == uf2_state->family_id_board_id);
     } else {
-        uf2_state = (uf2_state_t *)state;
-        block_compatible = !(block->flags & UF2_FLAG_FAMILY_ID)
-            // The official UF2 family ID for the target MCU
+        // Interface accepts the Family IDs for the Board ID or official UF2 ids
+        block_compatible = (UF2_BLOCK_FAMILY_ID(block) == uf2_state->family_id_board_id)
             || (g_board_info.target_cfg->uf2_family_id &&
-                (UF2_BLOCK_FAMILY_ID(block) == g_board_info.target_cfg->uf2_family_id))
-            // Family ID derived from the board ID
-            || (UF2_BLOCK_FAMILY_ID(block) == uf2_state->family_id_board_id);
+                (UF2_BLOCK_FAMILY_ID(block) == g_board_info.target_cfg->uf2_family_id));
+        if (block_compatible) {
+            uf2_state->family_id_lock = UF2_BLOCK_FAMILY_ID(block);
+            stream_printf("file_stream write_uf2; family_id_lock=0x%08x\r\n", uf2_state->family_id_lock);
+        }
     }
     if (!block_compatible) {
         stream_printf("file_stream write_uf2; block not compatible\r\n");
