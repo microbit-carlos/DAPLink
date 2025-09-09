@@ -60,3 +60,7 @@ const board_info_t g_board_info __ALIGNED(8) = {
 uint32_t target_flash_addr = 0x00000000;
 uint32_t target_flash_size = KB(256);
 uint32_t target_flash_byte[KB(256) / 4];
+
+uint16_t get_board_id_number(void) {
+    return 0x9900;
+}

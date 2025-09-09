@@ -46,6 +46,7 @@ target_cfg_t target_device_nrf52833 __ALIGNED(8) = {
     .flash_regions[0].flash_algo    = (program_target_t *) &flash_nrf52833,
     .ram_regions[0].start           = 0x20000000,
     .ram_regions[0].end             = 0x20020000,
+    .uf2_family_id                  = 0x621e937a,
     .erase_reset                    = 1,
     .target_vendor                  = "NordicSemiconductor",
     .target_part_number             = "nRF52833_xxAA",
@@ -70,3 +71,7 @@ const board_info_t g_board_info __ALIGNED(8) = {
 uint32_t target_flash_addr = 0x00000000;
 uint32_t target_flash_size = KB(512);
 uint8_t target_flash_byte[KB(512)];
+
+uint16_t get_board_id_number(void) {
+    return 0x9903;
+}

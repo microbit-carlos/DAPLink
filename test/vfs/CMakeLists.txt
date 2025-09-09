@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.15)
 
 project(vfs_test VERSION 1.0 LANGUAGES C)
 
+# Command line arguments with default values for interface mcu and target mcu
+set(BUILD_NAME "unamed" CACHE STRING "Unique name for the build, e.g. nrf52820_microbit")
+set(INTERFACE_MCU "kl27z" CACHE STRING "DAPLink Interface name, e.g. nrf52820, kl27z, kl26z, etc.")
+set(TARGET_FILE "target_nrf52833.c" CACHE STRING "C file with the target DAPLink config, e.g. target_nrf52833.c.")
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${TARGET_FILE}")
+    message(FATAL_ERROR "Target file ${TARGET_FILE} does not exist for INTERFACE_MCU: ${INTERFACE_MCU}")
+endif()
+message(STATUS "Building BL & IF for ${INTERFACE_MCU} with target ${TARGET_FILE}")
+
 add_compile_definitions(DAPLINK_DEBUG DAPLINK_DEBUG_STDOUT
     DEBUG_FLASH_MANAGER=1 DEBUG_INTELHEX=1 DEBUG_IAP_FLASH=1
     DAPLINK_DISABLE_STATIC_CHECKS DAPLINK_VFS_TESTS)
@@ -34,20 +43,10 @@ set(SOURCES main.c intf_flash.c util.c
     ../../source/daplink/validation.c
     ../../source/target/target_default.c)
 
-set(IF_SRC ../../source/daplink/interface/daplink.c target_flash.c)
-set(BL_SRC ../../source/daplink/bootloader/daplink.c)
+string(TOUPPER ${INTERFACE_MCU} INTERFACE_MCU_UPPER)
+string(TOUPPER ${BUILD_NAME} BUILD_NAME_UPPER)
 
-add_executable(vfs_test_nrf52820_if ${SOURCES} ${IF_SRC} target_nrf52833.c)
-target_compile_definitions(vfs_test_nrf52820_if PUBLIC -DINTERFACE_NRF52820 ${IF_DEFS})
-
-add_executable(vfs_test_nrf52820_bl ${SOURCES} ${BL_SRC})
-target_compile_definitions(vfs_test_nrf52820_bl PUBLIC -DINTERFACE_NRF52820 ${BL_DEFS})
-
-add_executable(vfs_test_kl27z_if ${SOURCES} ${IF_SRC} target_nrf52833.c)
-target_compile_definitions(vfs_test_kl27z_if PUBLIC -DINTERFACE_KL27Z ${IF_DEFS})
-
-add_executable(vfs_test_kl27z_bl ${SOURCES} ${BL_SRC})
-target_compile_definitions(vfs_test_kl27z_bl PUBLIC -DINTERFACE_KL27Z ${BL_DEFS})
-
-add_executable(vfs_test_kl26z_if ${SOURCES} ${IF_SRC} target_nrf51822.c)
-target_compile_definitions(vfs_test_kl26z_if PUBLIC -DINTERFACE_KL26Z ${IF_DEFS})
+add_executable(vfs_test_${BUILD_NAME}_bl ${SOURCES} ${TARGET_FILE})
+target_compile_definitions(vfs_test_${BUILD_NAME}_bl PUBLIC -DINTERFACE_${INTERFACE_MCU_UPPER} -DBUILD_NAME_${BUILD_NAME_UPPER} ${BL_DEFS})
+add_executable(vfs_test_${BUILD_NAME}_if ${SOURCES} target_flash.c ${TARGET_FILE})
+target_compile_definitions(vfs_test_${BUILD_NAME}_if PUBLIC -DINTERFACE_${INTERFACE_MCU_UPPER} -DBUILD_NAME_${BUILD_NAME_UPPER} ${IF_DEFS})

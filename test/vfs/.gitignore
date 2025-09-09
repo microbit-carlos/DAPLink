@@ -1,0 +1,5 @@
+vfs_tests.h
+files/daplink/*
+files/tmp/*
+files/**/*.bin
+files/**/*.uf2

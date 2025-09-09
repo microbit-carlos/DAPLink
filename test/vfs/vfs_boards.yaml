@@ -1,0 +1,61 @@
+# VFS Test Target Configuration
+# This file defines which VFS test executables to build
+# Fields:
+#   build_name_bl: The DAPLink target name for the bootloader
+#   build_name_if: The DAPLink target name for the interface
+#   if_mcu: The MCU used in the interface board, as listed in DAPLink
+# Optional fields:
+#   uf2_if_id: The UF2 Family ID to use when converting the interface hex
+#              files to UF2 format. If not provided, UF2 won't contain it.
+#   uf2_target_id: The UF2 Family ID to use when converting the target hex
+#   target_test_files
+
+vfs_boards:
+  - build_name: "nrf52820_microbit"
+    if_name: "nrf52820_microbit_if"
+    if_mcu: "nrf52820"
+    target_file: "target_nrf52833.c"
+    uf2_if_id: "0x820d9a5f"
+    uf2_target_id: "0x621e937a"
+    if_flash_regions:
+      - start: 0x8000
+        end: 0x1F000
+    target_flash_regions:
+      - start: 0x0
+        end: 0x80000
+    target_test_files:
+      #- "files/other/OOBE-universal-sectors.hex"
+      - "files/other/OOBE-universal-blocks.hex"
+      - "files/other/OOBE-9903.hex"
+
+  - build_name: "kl27z_microbit"
+    if_name: "kl27z_microbit_if"
+    if_mcu: "kl27z"
+    target_file: "target_nrf52833.c"
+    uf2_if_id: "0x7f83e793"
+    uf2_target_id: "0x621e937a"
+    if_flash_regions:
+      - start: 0x8000
+        end: 0x1FC00
+    target_flash_regions:
+      - start: 0x0
+        end: 0x80000
+    target_test_files:
+      #- "files/other/OOBE-universal-sectors.hex"
+      - "files/other/OOBE-universal-blocks.hex"
+      - "files/other/OOBE-9903.hex"
+
+  - build_name: "kl26z_microbit"
+    if_name: "kl26z_microbit_if"
+    if_mcu: "kl26z"
+    target_file: "target_nrf51822.c"
+    if_flash_regions:
+      - start: 0x8000
+        end: 0x1FC00
+    target_flash_regions:
+      - start: 0x0
+        end: 0x40000
+    target_test_files:
+      #- "files/other/OOBE-universal-sectors.hex"
+      - "files/other/OOBE-universal-blocks.hex"
+      - "files/other/OOBE-9900.hex"
