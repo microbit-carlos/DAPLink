@@ -23,18 +23,24 @@
 #include "DAP.h"
 #include "target_family.h"
 #include "target_board.h"
-
-const char * const board_id_mb_1_3 = "9900";
-const char * const board_id_mb_1_5 = "9901";
+#include "compatibility.h"
 
 typedef enum {
-    BOARD_VERSION_1_3 = 0,
-    BOARD_VERSION_1_5 = 1,
+    BOARD_VERSION_1_DEF = 0x9900,
+    BOARD_VERSION_1_3 = BOARD_VERSION_1_DEF,
+    BOARD_VERSION_1_5 = BOARD_VERSION_1_DEF + 1,
 } mb_version_t;
+
+// Declared in intelhex.c
+uint16_t board_id_hex_default = BOARD_VERSION_1_DEF;
+uint16_t board_id_hex = BOARD_VERSION_1_DEF;
+
+static const char * const board_id_mb_1_3 = "9900";
+static const char * const board_id_mb_1_5 = "9901";
 
 // Enables Board Type Pin, reads it and disables it
 // Depends on gpio_init() to have been executed already
-static uint8_t read_board_type_pin(void) {
+static mb_version_t board_id_detect(void) {
     uint8_t pin_state = 0;
     // GPIO mode, Pull enable, pull down, input
     PIN_BOARD_TYPE_PORT->PCR[PIN_BOARD_TYPE_BIT] = PORT_PCR_MUX(1) | PORT_PCR_PE(1) | PORT_PCR_PS(0);
@@ -45,7 +51,8 @@ static uint8_t read_board_type_pin(void) {
     pin_state = (PIN_BOARD_TYPE_GPIO->PDIR & PIN_BOARD_TYPE);
     // Revert and disable
     PIN_BOARD_TYPE_PORT->PCR[PIN_BOARD_TYPE_BIT] = PORT_PCR_MUX(0) | PORT_PCR_PE(0);
-    return pin_state;
+
+    return pin_state ? BOARD_VERSION_1_5 : BOARD_VERSION_1_3;
 }
 
 static void set_board_id(mb_version_t board_version) {
@@ -58,15 +65,26 @@ static void set_board_id(mb_version_t board_version) {
             break;
         default:
             g_board_info.target_cfg->rt_board_id = board_id_mb_1_5;
+            board_version = BOARD_VERSION_1_5;
             break;
     }
+    compat_uf2_set_family_ids(BOARD_VERSION_1_DEF, board_version);
 }
 
 // Called in main_task() to init before USB and files are configured
 static void prerun_board_config(void) {
-    // With only two boards the digital pin read maps directly to the type
-    mb_version_t board_version = (mb_version_t)read_board_type_pin();
+    mb_version_t board_version = board_id_detect();
     set_board_id(board_version);
+}
+
+// This function is called before the rest of target_set_state code, so it will
+// reset the micro:bit specific features state before the target state is executed
+static uint8_t target_set_state_microbit(target_state_t state)
+{
+    if (state == RESET_RUN) {
+        compat_uf2_clear_locked_id();
+    }
+    return 0;
 }
 
 extern target_cfg_t target_device_nrf51822_16;
@@ -81,4 +99,5 @@ const board_info_t g_board_info = {
     .target_cfg = &target_device_nrf51822_16,
     .board_vendor = "Micro:bit Educational Foundation",
     .board_name = "BBC micro:bit V1",
+    .uf2_block_compatible = compat_uf2_block_compatible,
 };
