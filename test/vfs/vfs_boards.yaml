@@ -14,9 +14,18 @@ vfs_boards:
   - build_name: "nrf52820_microbit"
     if_name: "nrf52820_microbit_if"
     if_mcu: "nrf52820"
-    target_file: "target_nrf52833.c"
-    uf2_if_id: "0x820d9a5f"
-    uf2_target_id: "0x621e937a"
+    extra_includes:
+      - "source/board/microbitv2/"
+    extra_sources:
+      - "source/board/microbitv2/compatibility.c"
+      - "test/vfs/target_nrf52833.c"
+    uf2_if_ids:
+      #- 0x820d9a5f
+      - 0xDA909905
+    uf2_target_ids:
+      - 0x621e937a
+      - 0xDA919903
+      - 0xDA919905
     if_flash_regions:
       - start: 0x8000
         end: 0x1F000
@@ -31,9 +40,18 @@ vfs_boards:
   - build_name: "kl27z_microbit"
     if_name: "kl27z_microbit_if"
     if_mcu: "kl27z"
-    target_file: "target_nrf52833.c"
-    uf2_if_id: "0x7f83e793"
-    uf2_target_id: "0x621e937a"
+    extra_includes:
+      - "source/board/microbitv2/"
+    extra_sources:
+      - "source/board/microbitv2/compatibility.c"
+      - "test/vfs/target_nrf52833.c"
+    uf2_if_ids:
+      #- 0x7f83e793
+      - 0xDA909904
+    uf2_target_ids:
+      - 0x621e937a
+      - 0xDA919903
+      - 0xDA919904
     if_flash_regions:
       - start: 0x8000
         end: 0x1FC00
@@ -48,7 +66,16 @@ vfs_boards:
   - build_name: "kl26z_microbit"
     if_name: "kl26z_microbit_if"
     if_mcu: "kl26z"
-    target_file: "target_nrf51822.c"
+    extra_includes:
+      - "source/board/microbitv2/"
+    extra_sources:
+      - "source/board/microbitv2/compatibility.c"
+      - "test/vfs/target_nrf51822.c"
+    uf2_if_ids:
+      - 0xDA909901
+    uf2_target_ids:
+      - 0xDA919900
+      - 0xDA919901
     if_flash_regions:
       - start: 0x8000
         end: 0x1FC00

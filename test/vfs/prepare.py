@@ -57,7 +57,7 @@ def get_config():
     if "vfs_boards" not in config:
         print("Error: 'vfs_boards' section missing in config file.")
         sys.exit(1)
-    mandatory_keys = ["build_name", "if_name", "if_mcu", "target_file",
+    mandatory_keys = ["build_name", "if_name", "if_mcu", "extra_sources",
                       "if_flash_regions", "target_flash_regions"]
     for board in config["vfs_boards"]:
         if not all(key in board for key in mandatory_keys):
@@ -128,12 +128,13 @@ def generate_uf2_file(ih_file, uf2_family_id=None):
     :return: Path instance to the generated UF2 file.
     """
     uf2conv_path = DAPLINK_ROOT / "tools" / "uf2" / "uf2conv.py"
-    uf2_file = ih_file.with_suffix(".uf2")
-    print(f"Generating {uf2_file.name} with Family ID {uf2_family_id}.")
+    id_str = f"{uf2_family_id:#x}" if uf2_family_id else "none"
+    uf2_file = ih_file.with_name(ih_file.stem + f"_id_{id_str}.uf2")
+    print(f"Generating {uf2_file.name} with Family ID {id_str}.")
     uf2_file.unlink(missing_ok=True)
     cmd = [sys.executable, str(uf2conv_path.absolute())]
     if uf2_family_id:
-        cmd.extend(["-f", uf2_family_id])
+        cmd.extend(["-f", id_str])
     cmd.extend([
         "-o", str(uf2_file.absolute()),
         str(ih_file.absolute())
@@ -238,11 +239,21 @@ def build_vfs_tests(config, build_dir):
 
     for board in config["vfs_boards"]:
         print(f"\nBuilding VFS test: vfs_test_{board['build_name']}_bl/if")
+        # Extra includes and sources need to be relative to VFS_TEST_DIR
+        extra_includes = ";".join(
+            os.path.relpath((DAPLINK_ROOT / inc).absolute(), VFS_TEST_DIR)
+            for inc in board.get("extra_includes", [])
+        )
+        extra_sources = ";".join(
+            os.path.relpath((DAPLINK_ROOT / src).absolute(), VFS_TEST_DIR)
+            for src in board.get("extra_sources", [])
+        )
         run_command([
                 "cmake", "-S", ".", "-B", "build",
                 f"-DBUILD_NAME={board['build_name']}",
                 f"-DINTERFACE_MCU={board['if_mcu']}",
-                f"-DTARGET_FILE={board['target_file']}"
+                f"-DEXTRA_INCLUDE_DIRS={extra_includes}",
+                f"-DEXTRA_SOURCES={extra_sources}",
             ],
             cwd=VFS_TEST_DIR
         )
@@ -270,32 +281,33 @@ def main():
         if not if_hex.is_file() or not if_bin.is_file():
             print(f"Error: DAPLink files not found for {board['if_name']}: {if_hex} or {if_bin}")
             sys.exit(1)
-        if_uf2 = generate_uf2_file(if_hex, board.get("uf2_if_id", None))
-        board["test_cases"]["bl"].extend([
-            {
-                "input": if_hex,
-                "ref": if_bin,
-                "out_of_order": False,
-                "location": "INTF_FLASH_IF"
-            }, {
-                "input": if_bin,
-                "ref": if_bin,
-                "out_of_order": False,
-                "location": "INTF_FLASH_IF"
-            }, {
+        board["test_cases"]["bl"].extend([{
+            "input": if_hex,
+            "ref": if_bin,
+            "out_of_order": False,
+            "location": "INTF_FLASH_IF"
+        }, {
+            "input": if_bin,
+            "ref": if_bin,
+            "out_of_order": False,
+            "location": "INTF_FLASH_IF"
+        }])
+        uf2_if_ids = board.get("uf2_if_ids", [])
+        for if_id in uf2_if_ids + [None]:
+            if_uf2 = generate_uf2_file(if_hex, if_id)
+            board["test_cases"]["bl"].append({
                 "input": if_uf2,
                 "ref": if_bin,
                 "out_of_order": True,
                 "location": "INTF_FLASH_IF"
-            }
-        ])
+            })
         print("")
 
     print_header("Converting config test files into bin + UF2 & add to test cases")
     for board in config["vfs_boards"]:
-        for test_files, test_cases, location, uf2_id in (
+        for test_files, test_cases, location, uf2_ids in (
             (board.get("if_test_files", []), board["test_cases"]["bl"], "INTF_FLASH_IF", board.get("uf2_if_id", None)),
-            (board.get("target_test_files", []), board["test_cases"]["if"], "TARGET_FLASH", board.get("uf2_target_id", None)),
+            (board.get("target_test_files", []), board["test_cases"]["if"], "TARGET_FLASH", board.get("uf2_target_ids", None)),
         ):
             for f_string in test_files:
                 print(f"Processing file {f_string} for board {board['build_name']}:")
@@ -317,7 +329,6 @@ def main():
                         "location": location
                     })
                     continue
-                uf2_file = generate_uf2_file(hex_file, uf2_id)
                 bin_file = generate_bin_file(hex_file)
                 test_cases.extend([{
                     "input": hex_file,
@@ -329,12 +340,16 @@ def main():
                     "ref": bin_file,
                     "out_of_order": False,
                     "location": location
-                }, {
-                    "input": uf2_file,
-                    "ref": bin_file,
-                    "out_of_order": True,
-                    "location": location
                 }])
+                uf2_ids_list = uf2_ids if isinstance(uf2_ids, list) else []
+                for uf2_id in uf2_ids_list + [None]:
+                    uf2_file = generate_uf2_file(hex_file, uf2_id)
+                    test_cases.append({
+                        "input": uf2_file,
+                        "ref": bin_file,
+                        "out_of_order": True,
+                        "location": location
+                    })
                 print("")
 
     print_header("Generating Intel Hex & UF2 files for Bootloader & Interface testing")
@@ -345,35 +360,41 @@ def main():
         ih_if_path = temp_files_dir / f"{board['build_name']}_if_random.hex"
         generate_rand_intel_hex_file(board.get("if_flash_regions", []), ih_if_path)
         bin_if_path = generate_bin_file(ih_if_path)
-        uf2_if_path = generate_uf2_file(ih_if_path)
-        board["test_cases"]["bl"].extend([{
+        board["test_cases"]["bl"].append({
             "input": ih_if_path,
             "ref": bin_if_path,
             "out_of_order": False,
             "location": "INTF_FLASH_IF"
-        }, {
-            "input": uf2_if_path,
-            "ref": bin_if_path,
-            "out_of_order": True,
-            "location": "INTF_FLASH_IF"
-        }])
+        })
+        interface_uf2_ids = board.get("uf2_if_ids", [])
+        for if_id in interface_uf2_ids + [None]:
+            uf2_if_path = generate_uf2_file(ih_if_path, if_id)
+            board["test_cases"]["bl"].append({
+                "input": uf2_if_path,
+                "ref": bin_if_path,
+                "out_of_order": True,
+                "location": "INTF_FLASH_IF"
+            })
         print("")
         # Generate target hex/uf2 files for interface testing
         ih_target_path = temp_files_dir / f"{board['build_name']}_target_random.hex"
         generate_rand_intel_hex_file(board.get("target_flash_regions", []), ih_target_path)
         bin_target_path = generate_bin_file(ih_target_path)
-        uf2_target_path = generate_uf2_file(ih_target_path)
-        board["test_cases"]["if"].extend([{
+        board["test_cases"]["if"].append({
             "input": ih_target_path,
             "ref": bin_target_path,
             "out_of_order": False,
             "location": "TARGET_FLASH"
-        }, {
-            "input": uf2_target_path,
-            "ref": bin_target_path,
-            "out_of_order": True,
-            "location": "TARGET_FLASH"
-        }])
+        })
+        target_uf2_ids = board.get("uf2_target_ids", [])
+        for target_id in target_uf2_ids + [None]:
+            uf2_target_path = generate_uf2_file(ih_target_path, target_id)
+            board["test_cases"]["if"].append({
+                "input": uf2_target_path,
+                "ref": bin_target_path,
+                "out_of_order": True,
+                "location": "TARGET_FLASH"
+            })
         print("")
 
     print_header("Generating test header file")

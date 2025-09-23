@@ -1,11 +1,22 @@
 #include <stdint.h>
 #include "target_family.h"
 #include "target_board.h"
+#include "validation.h"
+#include "compatibility.h"
 
-const target_family_descriptor_t *g_target_family = NULL;
+uint8_t validate_bin_nvic_microbit_v1(const uint8_t *buf);
 
 uint16_t board_id_hex_default = 0x9900;
 uint16_t board_id_hex = 0x9901;
+
+#ifdef DAPLINK_BL
+const target_family_descriptor_t *g_target_family = NULL;
+#else
+const target_family_descriptor_t g_target_family_nrf51822_microbit = {
+    .validate_bin_nvic = validate_bin_nvic_microbit_v1,
+};
+const target_family_descriptor_t *g_target_family = &g_target_family_nrf51822_microbit;
+#endif
 
 static const uint32_t nRF51822AA_FLM[] = { 0xE00ABE00 };
 static const sector_info_t sectors_info_nrf51[] = { {0, 1024} };
@@ -55,6 +66,7 @@ const board_info_t g_board_info __ALIGNED(8) = {
     .target_cfg = &target_device_nrf51822_16,
     .board_vendor = "Micro:bit Educational Foundation",
     .board_name = "BBC micro:bit V1",
+    .uf2_block_compatible = compat_uf2_block_compatible,
 };
 
 uint32_t target_flash_addr = 0x00000000;
@@ -62,5 +74,22 @@ uint32_t target_flash_size = KB(256);
 uint32_t target_flash_byte[KB(256) / 4];
 
 uint16_t get_board_id_number(void) {
-    return 0x9900;
+    return board_id_hex;
 }
+
+uint8_t validate_bin_nvic_microbit_v1(const uint8_t *buf) {
+    uint8_t ret = validate_bin_nvic_base(buf);
+    if (ret == 0) {
+        // micro:bit builds with Nordic SoftDevice set the vector table
+        // to known addresses, in this case we check for the initial SP
+        const uint32_t *sd_vector_initial_sp = (const uint32_t *)buf;
+        ret = *sd_vector_initial_sp == 0x000007C0;
+    }
+    return ret;
+}
+
+void reset_test_state(void) {
+    compat_uf2_set_family_ids(0x9900, get_board_id_number());
+    compat_uf2_clear_locked_id();
+}
+

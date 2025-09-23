@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "target_family.h"
 #include "target_board.h"
+#include "compatibility.h"
 
 const target_family_descriptor_t *g_target_family = NULL;
 
@@ -66,6 +67,7 @@ const board_info_t g_board_info __ALIGNED(8) = {
     .target_cfg = &target_device_nrf52833,
     .board_vendor = "Micro:bit Educational Foundation",
     .board_name = "BBC micro:bit V2",
+    .uf2_block_compatible = compat_uf2_block_compatible,
 };
 
 uint32_t target_flash_addr = 0x00000000;
@@ -73,5 +75,10 @@ uint32_t target_flash_size = KB(512);
 uint8_t target_flash_byte[KB(512)];
 
 uint16_t get_board_id_number(void) {
-    return 0x9903;
+    return board_id_hex;
+}
+
+void reset_test_state(void) {
+    compat_uf2_set_family_ids(0x9903, get_board_id_number());
+    compat_uf2_clear_locked_id();
 }

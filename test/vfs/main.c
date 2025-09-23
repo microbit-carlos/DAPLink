@@ -16,6 +16,10 @@
 #define BLOCK_SIZE 512
 #define SEPARATOR "================================================================================"
 
+__WEAK void reset_test_state(void) {
+    // Default implementation does nothing
+    // Board specific implementation can be set in the custom target file
+}
 
 extern uint32_t target_flash_addr;
 extern uint32_t target_flash_size;
@@ -44,6 +48,8 @@ void shuffle_indices(size_t *array, size_t n) {
 int main(int argc, char **argv)
 {
     for (uint32_t t = 0; t < sizeof(tests) / sizeof(vfs_tests_t); t++) {
+        reset_test_state();
+
         fprintf(stderr, SEPARATOR "\nTest %d: %s\r\n" SEPARATOR "\r\n", t, tests[t].input_file);
         FILE *f = fopen(tests[t].input_file, "rb");
         if (f == NULL) {
@@ -113,6 +119,7 @@ int main(int argc, char **argv)
         }
 
         status = stream_close();
+        free(file_buffer);
 
         if (status == ERROR_SUCCESS) {
             FILE *f = fopen(tests[t].ref_file, "rb");
@@ -152,12 +159,12 @@ int main(int argc, char **argv)
                 pos += l;
                 i++;
             }
+            fclose(f);
             fprintf(stderr, "Success '%s' (checked %d bytes)\r\n", tests[t].input_file, pos);
         } else {
             fprintf(stderr, "Error '%s' closing stream: %s\r\n", tests[t].input_file, error_get_string(status));
             exit(-1);
         }
-
     }
     fprintf(stdout, "Success\r\n");
 
